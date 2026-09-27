@@ -5,7 +5,7 @@ Deliverable type: design only. No production code changes required by this doc.
 
 Grounded facts (verified in this workspace):
 - `multi_harness_config.json` `execution_settings` (lines 70-76) defines `retry_attempts: 3`, `backoff_factor: 1.5`, `max_execution_time_seconds: 300`. Nothing drives retries with them today (`max_execution_time_seconds` is only read once, as a step-count heuristic at `multi_harness_orchestrator.py:171`).
-- One unprotected call site: `multi_harness_orchestrator.py:385`, `result = await adapter.run(prompt, workdir=os.getcwd())` one shot, then `result.ok` false straight to `HarnessError` and a cross-harness handoff.
+- One unprotected call site: `multi_harness_orchestrator.py:404`, `result = await adapter.run(prompt, workdir=os.getcwd())` one shot, then `result.ok` false straight to `HarnessError` and a cross-harness handoff.
 - Adapters promise `run()` never raises and always return `AgentRunResult(ok, text, tokens_used, provider, model, error)` (`harness_adapters.py:70-78`).
 - Project rule: NEVER crash, always degrade gracefully. The helper adds the cheap middle tier between "first try" and "full handoff".
 
@@ -53,7 +53,7 @@ async def retry_with_backoff(
 - `default_is_retryable`: `False` for these error substrings: `not installed` (CLI missing: jcode/opencode/antigravity), `not configured` (antigravity OAuth), `not authenticated` (opencode auth), `credentials` (opencode invalid-key paths, check + live probe), `no headless` (cline's stub). `True` otherwise: nonzero rc, non-JSON output, empty text, timeouts. Error strings are the only coupling to `harness_adapters.py`. Validated against all 7 literal error messages the adapters actually produce (cases 4 and 14); the substring list is the single tuning point (FM10).
 - No new mandatory config. `retry_attempts`, `backoff_factor`, `max_execution_time_seconds` keep their names and values. `retry_base_delay`, `retry_max_delay`, `retry_jitter` are optional additions with code defaults.
 
-**Call-site integration** (the only orchestrator change, one wrap at line 385):
+**Call-site integration** (the only orchestrator change, one wrap at line 404):
 
 ```python
 policy = RetryPolicy.from_config(self.config["execution_settings"])
@@ -115,7 +115,7 @@ Worst-case added latency with defaults: **2.50s** of sleeping (1.25s minimum wit
 | FM3 | Deadline exceeded with attempts remaining | Stop before sleeping past the budget (measured from loop entry, R4), log `deadline_exceeded` | One stuck harness must not hold the relay hostage |
 | FM4 | Retry amplification across layers | Retries are per-harness-per-step only, never nested with the recovery loop. Worst case 3 attempts x `max_recovery_attempts: 5` x 4 harnesses = 60 runs, `max_delay` caps every wait | Two independent bounded layers compose better than one unbounded one |
 | FM5 | Non-idempotent partial work | A timed-out agent may have already edited files, and the re-prompt is sent verbatim. Accept + log | Baton history refreshes only across handoffs, not within a retry loop |
-| FM6 | Token spend on failed attempts | Return value carries only the LAST attempt's `tokens_used`. Caller MUST aggregate via `on_attempt`. Today `multi_harness_orchestrator.py:428` books `result.tokens_used or 500`, so a 3-attempt run spending 1000 tokens would be booked as 200 | Retries otherwise silently bypass `TokenBudget` accounting |
+| FM6 | Token spend on failed attempts | Return value carries only the LAST attempt's `tokens_used`. Caller MUST aggregate via `on_attempt`. Today `multi_harness_orchestrator.py:447` books `result.tokens_used or 500`, so a 3-attempt run spending 1000 tokens would be booked as 200 | Retries otherwise silently bypass `TokenBudget` accounting |
 | FM7 | Event-loop blocking | Never `time.sleep`, only the injected async sleep | Keeps `TokenMonitor` and parallel harness tasks live during waits |
 | FM8 | Config drift / missing keys | Unknown or absent keys fall back to code defaults (3 / 1.5 / 300) | `load_config` merges SHALLOW (`{**defaults, **file}`, orchestrator line 139), so a file's partial `execution_settings` replaces the default dict wholesale (e.g. `test_relay.py:40` supplies only `max_execution_time_seconds`); the key-level tolerance actually comes from `from_config`'s `.get()` defaults |
 | FM9 | "Empty text" false negative | `ok=bool(text)` in adapters means a legitimately empty rc=0 run is retryable and eventually fails | A relay step must produce a baton block, so empty output IS a failure |
