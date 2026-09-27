@@ -1,0 +1,102 @@
+{
+  "harness_pool": [
+    {
+      "name": "opencode",
+      "models": ["gpt-5.5-pro", "claude-opus-5"],
+      "token_budget": 100000,
+      "default_model": "gpt-5.5-pro",
+      "cost_per_1k_tokens": 0.002,
+      "max_concurrent_tasks": 3,
+      "api_endpoint": "https://api.openai.com/v1",
+      "priority": 1
+    },
+    {
+      "name": "cline",
+      "models": ["claude-sonnet-5", "gpt-4o"],
+      "token_budget": 80000,
+      "default_model": "claude-sonnet-5",
+      "cost_per_1k_tokens": 0.003,
+      "max_concurrent_tasks": 2,
+      "api_endpoint": "https://api.anthropic.com/v1",
+      "priority": 2
+    },
+    {
+      "name": "antigravity",
+      "models": ["gemini-2.5-pro", "gpt-5.6-sol"],
+      "token_budget": 60000,
+      "default_model": "gemini-2.5-pro",
+      "cost_per_1k_tokens": 0.004,
+      "max_concurrent_tasks": 1,
+      "api_endpoint": "https://generativelanguage.googleapis.com/v1",
+      "priority": 3
+    },
+    {
+      "name": "github_copilot",
+      "models": ["claude-3.5-sonnet", "gpt-4-turbo"],
+      "token_budget": 50000,
+      "default_model": "claude-3.5-sonnet",
+      "cost_per_1k_tokens": 0.005,
+      "max_concurrent_tasks": 2,
+      "api_endpoint": "https://api.github.com",
+      "priority": 4
+    },
+    {
+      "name": "azure_openai",
+      "models": ["gpt-35-turbo", "gpt-4"],
+      "token_budget": 70000,
+      "default_model": "gpt-35-turbo",
+      "cost_per_1k_tokens": 0.0015,
+      "max_concurrent_tasks": 3,
+      "api_endpoint": "https://openai.azure.com",
+      "priority": 5
+    }
+  ],
+  "handoff_strategy": {
+    "mode": "token_based",
+    "context_preservation": true,
+    "auto_recovery": true,
+    "token_threshold_percent": 80,
+    "graceful_transfer": true,
+    "handoff_priority": "token_availability",
+    "enable_load_balancing": true,
+    "min_harness_for_handoff": 2
+  },
+  "conversation_persistence": {
+    "enabled": true,
+    "storage": "swarm_artifacts",
+    "compaction_threshold": 0.8,
+    "max_history_size": 10000,
+    "retention_hours": 24,
+    "compression_algorithm": "gzip"
+  },
+  "execution_settings": {
+    "max_execution_time_seconds": 300,
+    "retry_attempts": 3,
+    "backoff_factor": 1.5,
+    "enable_streaming": true,
+    "timeout_handling": "graceful",
+    "resource_monitoring": true,
+    "performance_tracking": true
+  },
+  "monitoring": {
+    "token_tracking": true,
+    "execution_monitoring": true,
+    "harness_performance": true,
+    "alerting_enabled": true,
+    "metrics_retention_hours": 72
+  },
+  "recovery": {
+    "enable_auto_recovery": true,
+    "checkpoint_frequency_seconds": 30,
+    "max_recovery_attempts": 5,
+    "fallback_harness_selection": "intelligent",
+    "preserve_error_context": true
+  },
+  "api_credentials": {
+    "openai_api_key": "${OPENAI_API_KEY}",
+    "anthropic_api_key": "${ANTHROPIC_API_KEY}",
+    "google_api_key": "${GOOGLE_API_KEY}",
+    "github_token": "${GITHUB_TOKEN}",
+    "azure_api_key": "${AZURE_API_KEY}"
+  }
+}
