@@ -9,7 +9,7 @@ Deliverable type: design only. No production code changes are required by this d
 `execution_settings` in `multi_harness_config.json` already defines `retry_attempts: 3` and `backoff_factor: 1.5`, but nothing reads them today. Real harness execution goes through one unprotected call site:
 
 ```python
-# multi_harness_orchestrator.py :: _execute_step_with_agent (line 385 today)
+# multi_harness_orchestrator.py :: _execute_step_with_agent (line 404 today)
 result = await adapter.run(prompt, workdir=os.getcwd())   # one shot
 if not result.ok:
     raise HarnessError(...)                               # straight to handoff
@@ -211,7 +211,7 @@ Worst-case added latency with defaults: **2.50s** of sleeping across 3 attempts 
 
 ## Appendix - Integration notes (not part of the 3 core sections)
 
-- **Files touched if implemented:** new `retry_backoff.py`; one-line wrap at `multi_harness_orchestrator.py:385`; optional config keys in `multi_harness_config.json`.
+- **Files touched if implemented:** new `retry_backoff.py`; one-line wrap at `multi_harness_orchestrator.py:404`; optional config keys in `multi_harness_config.json`.
 - **Test plan (no real sleeping, via injected `sleep`/`now`):**
   1. Success on first try -> 0 sleeps, 1 call.
   2. Fail, fail, succeed -> 2 calls to sleep, delays within `[0.5, 1.0]` and `[0.75, 1.5]`.
