@@ -677,11 +677,13 @@ class JevDecisionEngine:
             return None
         criteria = {}
         for name, ratio, info in candidates:
-            models = ", ".join(info['config'].get('models', []))
+            # info may be a full harness dict (has 'config') or a bare dict;
+            # never crash on shape - degrade gracefully to budget-only info
+            cfg = (info or {}).get('config', {}) if isinstance(info, dict) else {}
             criteria[name] = {
-                "models": models,
+                "models": ", ".join(cfg.get('models', [])),
                 "budget_remaining_percent": round(ratio * 100),
-                "max_concurrent_tasks": info['config'].get('max_concurrent_tasks', 1),
+                "max_concurrent_tasks": cfg.get('max_concurrent_tasks', 1),
             }
         state = {
             "task": task[:1000],
