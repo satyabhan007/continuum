@@ -29,7 +29,7 @@ The Multi-Harness Orchestrator is a local tool designed to manage multiple agent
 ### 🛡️ **Fault Tolerance**
 - Automatic recovery from token exhaustion
 - Error context preservation
-- Retry mechanisms with intelligent backoff
+- Retry mechanisms with intelligent backoff ([design doc](docs/retry_with_backoff.md))
 
 ## System Architecture
 
