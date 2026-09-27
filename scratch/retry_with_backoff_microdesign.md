@@ -50,7 +50,7 @@ async def retry_with_backoff(
 - Cancellation (`asyncio.CancelledError`, `KeyboardInterrupt`) propagates immediately. The loop catches `Exception`, not `BaseException`. Never classified, never retried, never converted to `ok=False`.
 - `fn` returning `None` is a transient failed attempt. If it persists to the last attempt, return a synthesized `AgentRunResult(ok=False, error="adapter returned None")` so the caller never dereferences `result.ok` on `None`.
 - `on_attempt(attempt_no, result, exc)` fires after EVERY attempt including failed ones. It is the only way to observe per-attempt token spend, because the return value carries only the last attempt (see FM6). A cancelled attempt never fires it.
-- `default_is_retryable`: `False` for `not installed` / `not configured` / `no headless` error substrings (CLI missing, OAuth missing, cline's stub). `True` otherwise: nonzero rc, non-JSON output, empty text, timeouts. Error strings are the only coupling to `harness_adapters.py`.
+- `default_is_retryable`: `False` for these error substrings: `not installed` (CLI missing: jcode/opencode/antigravity), `not configured` (antigravity OAuth), `not authenticated` (opencode auth), `credentials` (opencode invalid-key paths, check + live probe), `no headless` (cline's stub). `True` otherwise: nonzero rc, non-JSON output, empty text, timeouts. Error strings are the only coupling to `harness_adapters.py`. Validated against all 7 literal error messages the adapters actually produce (cases 4 and 14); the substring list is the single tuning point (FM10).
 - No new mandatory config. `retry_attempts`, `backoff_factor`, `max_execution_time_seconds` keep their names and values. `retry_base_delay`, `retry_max_delay`, `retry_jitter` are optional additions with code defaults.
 
 **Call-site integration** (the only orchestrator change, one wrap at line 385):
@@ -81,6 +81,8 @@ if not result.ok:
 ```
 w_k = min(max_delay, base_delay * backoff_factor ** (k - 1))
 ```
+
+The `min(max_delay, ...)` cap applies UNCONDITIONALLY, even when `deadline` is `None`. Validated: `base_delay=100` with the default `max_delay=30` produces capped 30s waits, not 100s (case 15b) - removing the deadline does not remove the cap.
 
 **R2 - Equal jitter** (`jitter=True`): actual sleep is uniform in `[w_k/2, w_k]`. Deterministic half-delay floor, decorrelated waits. Prevents a thundering herd against a shared CLI with `max_concurrent_tasks: 2`. Jitter never changes the attempt count, only wait lengths.
 
@@ -115,7 +117,7 @@ Worst-case added latency with defaults: **2.50s** of sleeping (1.25s minimum wit
 | FM5 | Non-idempotent partial work | A timed-out agent may have already edited files, and the re-prompt is sent verbatim. Accept + log | Baton history refreshes only across handoffs, not within a retry loop |
 | FM6 | Token spend on failed attempts | Return value carries only the LAST attempt's `tokens_used`. Caller MUST aggregate via `on_attempt`. Today `multi_harness_orchestrator.py:428` books `result.tokens_used or 500`, so a 3-attempt run spending 1000 tokens would be booked as 200 | Retries otherwise silently bypass `TokenBudget` accounting |
 | FM7 | Event-loop blocking | Never `time.sleep`, only the injected async sleep | Keeps `TokenMonitor` and parallel harness tasks live during waits |
-| FM8 | Config drift / missing keys | Unknown or absent keys fall back to code defaults (3 / 1.5 / 300) | `load_config` already merges file config over defaults |
+| FM8 | Config drift / missing keys | Unknown or absent keys fall back to code defaults (3 / 1.5 / 300) | `load_config` merges SHALLOW (`{**defaults, **file}`, orchestrator line 139), so a file's partial `execution_settings` replaces the default dict wholesale (e.g. `test_relay.py:40` supplies only `max_execution_time_seconds`); the key-level tolerance actually comes from `from_config`'s `.get()` defaults |
 | FM9 | "Empty text" false negative | `ok=bool(text)` in adapters means a legitimately empty rc=0 run is retryable and eventually fails | A relay step must produce a baton block, so empty output IS a failure |
 | FM10 | Classifier misjudges | A wrong `is_retryable` decision wastes or skips one retry, never crashes or hangs | Classifier is injectable per call site, substring list is the single tuning point |
 | FM11 | `fn` returns `None` (contract-violating adapter) | Treated as a transient failed attempt. If it persists, synthesized `AgentRunResult(ok=False, error="adapter returned None")` | "Never crash" must cover broken adapters too, since `None` leaking to the caller explodes at `result.ok` |
@@ -143,3 +145,5 @@ Worst-case added latency with defaults: **2.50s** of sleeping (1.25s minimum wit
 11. `asyncio.CancelledError` on attempt 2 of 3 -> propagates immediately, no sleep, no fabricated result (FM12, hatch 3).
 12. Custom `is_retryable` veto on an unexpected exception, attempt 2 of 3 -> that exception propagates (hatch 2).
 13. Unexpected exceptions on attempts 1-2, success on 3 -> successful result returned, earlier exceptions visible only via `on_attempt`.
+
+**Validation status:** this test plan was executed in full against `scratch/retry_backoff_reference.py` (a scratch reference implementation of this design) by `scratch/test_retry_backoff_reference.py`: 17 case functions, 91 assertions, all passing (plus case 6b negative-delay clamp, case 14 classifier matrix over all 7 real adapter error strings, case 15 no-deadline, case 15b unconditional `max_delay` cap). Validation caught and fixed two defects in this doc: (a) the FM2 classifier substring list originally missed the opencode auth strings (`not authenticated`, `credentials`), which would have burned 3 attempts + sleeps on a guaranteed-dead auth failure; (b) FM8's rationale implied `load_config`'s merge provides key-level tolerance - the merge is shallow, so tolerance must come from `from_config`'s `.get()` defaults.
