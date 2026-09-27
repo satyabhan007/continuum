@@ -49,6 +49,36 @@
       "max_concurrent_tasks": 3,
       "api_endpoint": "https://openai.azure.com",
       "priority": 5
+    },
+    {
+      "name": "claude_code",
+      "models": ["claude-opus-5", "claude-sonnet-5"],
+      "token_budget": 120000,
+      "default_model": "claude-sonnet-5",
+      "cost_per_1k_tokens": 0.003,
+      "max_concurrent_tasks": 2,
+      "api_endpoint": "https://api.anthropic.com/v1",
+      "priority": 6
+    },
+    {
+      "name": "jcode",
+      "models": ["gpt-5.5-pro", "claude-opus-5"],
+      "token_budget": 100000,
+      "default_model": "gpt-5.5-pro",
+      "cost_per_1k_tokens": 0.002,
+      "max_concurrent_tasks": 3,
+      "api_endpoint": "https://api.openai.com/v1",
+      "priority": 7
+    },
+    {
+      "name": "hermes",
+      "models": ["auto-relay"],
+      "token_budget": 90000,
+      "default_model": "auto-relay",
+      "cost_per_1k_tokens": 0.0,
+      "max_concurrent_tasks": 2,
+      "api_endpoint": "local",
+      "priority": 8
     }
   ],
   "handoff_strategy": {

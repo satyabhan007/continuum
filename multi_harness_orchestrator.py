@@ -62,7 +62,12 @@ class MultiHarnessOrchestrator:
     - Intelligent handoff mechanisms
     """
     
-    def __init__(self, config_path: str = "config/multi_harness_config.json"):
+    def __init__(self, config_path: str = "multi_harness_config.json"):
+        # Config can live at repo root or under config/; prefer an existing file
+        if not os.path.exists(config_path):
+            alt = os.path.join("config", os.path.basename(config_path))
+            if os.path.exists(alt):
+                config_path = alt
         self.config = self.load_config(config_path)
         self.harnesses = {}
         self.agent_contexts = {}
@@ -628,13 +633,20 @@ class JevDecisionEngine:
         key = os.environ.get("TYPESAFE_API_KEY")
         if key:
             return key
-        path = os.path.expanduser("~/.config/typesafe/apikey")
-        if os.path.exists(path):
-            with open(path) as f:
-                for line in f:
-                    line = line.strip()
-                    if line.startswith("export TYPESAFE_API_KEY="):
-                        return line.split("=", 1)[1].strip().strip('"')
+        # Platform-standard config locations:
+        #   Linux/macOS: ~/.config/typesafe/apikey  (XDG convention)
+        #   Windows:     %APPDATA%/typesafe/apikey  (Roaming convention)
+        candidates = [os.path.expanduser("~/.config/typesafe/apikey")]
+        appdata = os.environ.get("APPDATA")
+        if appdata:
+            candidates.append(os.path.join(appdata, "typesafe", "apikey"))
+        for path in candidates:
+            if os.path.exists(path):
+                with open(path) as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith("export TYPESAFE_API_KEY="):
+                            return line.split("=", 1)[1].strip().strip('"')
         return None
 
     def _ask(self, state, questions) -> Optional[Dict]:
