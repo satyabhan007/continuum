@@ -10,3 +10,7 @@ venv/
 # Jev / orchestration artifacts
 *.log
 contexts/
+
+# Generated analysis exports (reproduce via stock_analysis/out/ANALYSIS.md)
+stock_analysis/out/*
+!stock_analysis/out/ANALYSIS.md

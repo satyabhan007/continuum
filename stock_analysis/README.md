@@ -104,6 +104,9 @@ download the CSV in a browser and pass the file path instead. All analysis
 features work fully offline from local CSV files; the optional fetch path
 needs the third-party `requests` package only.
 
+A written-up analysis of the five bundled sample datasets (rankings, risk
+profile, and cross-checks) lives in [`out/ANALYSIS.md`](out/ANALYSIS.md).
+
 ## Design notes
 
 - **Stdlib first**: no numpy/pandas dependency; the analyzer uses `csv`,
