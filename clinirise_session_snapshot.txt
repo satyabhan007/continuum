@@ -1,0 +1,73 @@
+## Clinirise Session Snapshot (July 20‑21 2026)
+
+### Cost Analysis (India (asia‑south1) – approximate monthly spend)
+
+| Service | Unit | Monthly usage | Price per unit (asia‑south1) | Monthly cost | Notes |
+|---------|------|---------------|------------------------------|-------------|-------|
+| Cloud Run (request‑based) | vCPU‑sec | 150 000 vCPU‑sec (≈ 41 h @1 vCPU) | $0.000024 | $3.60 | Free tier covers 240 k vCPU‑sec
+| | GiB‑sec | 300 000 GiB‑sec (≈ 83 h @3.75 GiB) | $0.0000025 | $0.75 | Free tier covers 450 k GiB‑sec
+| | Requests | 300 000 req (~10 k / day) | $0.40 / M req (first M free) | $0.12 | |
+| Cloud Run (instance‑based worker) | vCPU‑sec | 864 000 vCPU‑sec (1 vCPU × 24 h × 30 d) | $0.000024 | $20.74 | for persistent background workers
+| | GiB‑sec | 2 592 000 GiB‑sec (3 GiB × 24 h × 30 d) | $0.0000025 | $6.48 | |
+| Cloud Run – egress | GiB outbound | 50 GiB | $0.12 / GiB (first 1 GiB free) | $5.88 | |
+| Firestore (Native) | Reads | 2 000 000 reads (~66 k / day) | $0.06 / 100 k | $1.20 | Free tier covers 50 k reads
+| | Writes | 200 000 writes (~6.6 k / day) | $0.18 / 100 k | $0.36 | |
+| | Storage | 5 GiB active | $0.026 / GiB | $0.13 | |
+| Secret Manager | Secret versions | 10 secrets | $0.06 / secret‑month | $0.60 | within free tier for first 10
+| Cloud Scheduler | Jobs | 2 jobs × 30 runs | $0.10 / job‑mo | $0.20 | |
+| Cloud Build (CI) | Build minutes | 200 min (first 120 free) | $0.003 / min | $0.24 | |
+| Artifact Registry | Storage | 5 GiB | $0.10 / GiB‑mo | $0.50 | |
+| Serverless VPC Access | vCPU‑sec | 86 400 vCPU‑sec | $0.000024 | $2.07 | |
+| | GiB‑sec | 345 600 GiB‑sec | $0.0000025 | $0.86 | |
+| Qdrant (GKE) – compute | GKE nodes (e2‑standard‑2) | 2 nodes × 24 h × 30 d = 1 440 node‑hrs | $0.067 / node‑hr | $96.48 | |
+| | Persistent SSD | 100 GiB × 30 d | $0.17 / GiB‑mo | $17.00 | |
+| Cloud Logging (ingestion) | GB ingested | 10 GB | $0.50 / GB | $5.00 | |
+| Cloud Monitoring (custom metrics) | GB stored | 50 GB | $0.08 / GB | $4.00 | |
+| Looker Studio | UI/visualisation | – | – | $0.00 | Free |
+| Dataflow (optional batch) | vCPU‑hr | 100 vCPU‑hr | $0.040 / vCPU‑hr | $4.00 | |
+| **Total estimated monthly cost** | | | | **≈ $162.70 / month** (~₹13 k) |
+
+*All prices are in USD; conversion to INR at current rate (~₹83/USD). Free‑tier credits applied where possible.*
+
+### DPDP / HIPAA Compliance Checklist
+
+| Area | GCP feature | How it satisfies DPDP (and HIPAA) | Implementation notes |
+|------|-------------|-----------------------------------|---------------------|
+| Data residency | Resources created in `asia‑south1` (Mumbai) | Guarantees data never leaves Indian jurisdiction. | Verify via `gcloud ... --filter="location:asia-south1"`. |
+| Encryption‑in‑transit | TLS 1.2+ on Cloud Run, Firestore client libraries | Encrypts data on the wire (DPDP clause). | Enforce HTTPS; no `--allow‑unauthenticated` for PHI. |
+| Encryption‑at‑rest | Artifact Registry, Firestore (Google‑managed), Persistent SSD, GKE disks | Data stored encrypted by default. | Enable CMEK if extra assurance needed. |
+| IAM (least privilege) | Fine‑grained roles for Cloud Run, Firestore, Secret Manager | Only authorized principals can access PHI. | Review via `gcloud projects get‑iam‑policy`. |
+| Audit logging | Cloud Audit Logs (admin + data‑access) → Cloud Logging sink to locked bucket | Provides traceability for processing activities. | Set up sink with retention ≥ 30 days. |
+| Data minimisation & retention | Store only hashed patient IDs; Qdrant stores anonymised embeddings; Firestore TTL = 90 days | Limits personal data stored. | Enable TTL on temporary collections. |
+| Secret management | Secret Manager with version rotation every 90 days | Secure storage of API keys, DB passwords. | Automate rotation via Cloud Scheduler + Cloud Run job. |
+| Network security | VPC Service Controls perimeter; VPC‑SC connector for egress control | Prevents unauthorized data exfiltration. | Configure perimeter to include Cloud Run, Firestore, GKE. |
+| User consent | Bot sends explicit consent before collecting health data; stores consent version per record | Demonstrates purpose‑specific processing. |
+| Breach response | Cloud SCC alerts for IAM changes / unauth‑ingress → Slack/email | Enables 72‑hour breach reporting. |
+| HIPAA eligibility | Use HIPAA‑eligible services (Cloud Run, Firestore, GKE, Secret Manager); sign BAA | Satisfies HIPAA technical safeguards. |
+| Data Subject Rights | Admin endpoint to delete patient data from Firestore & Qdrant; logs operation | Meets “right to erasure” & “access”. |
+| Backup & DR | Firestore multi‑region replication (still `asia‑south1`); GKE snapshots stored regionally | Data availability while respecting residency. |
+| Compliance monitoring | Config Validator rule `resource.location == "asia‑south1"`; Policy Intelligence | Continuous enforcement. |
+
+#### Step‑by‑step DPDP checklist before go‑live
+1. Verify **no resources** outside `asia‑south1` (`gcloud asset list --filter="location!=asia-south1"`).
+2. (Optional) Enable CMEK for Firestore & GKE disks.
+3. Export IAM bindings and ensure least‑privilege.
+4. Confirm audit‑log sink to a **locked** Cloud Storage bucket.
+5. Confirm VPC‑SC perimeter includes all services.
+6. Test consent flow – data is stored only after consent flag.
+7. Test DSR endpoint – records removed from Firestore & Qdrant, operation logged.
+8. Verify backup restore of Firestore snapshot.
+9. Run Container Analysis on Cloud Run image – no critical findings.
+10. Ensure BAA is signed in the console for HIPAA coverage.
+
+### Operational Recommendations
+- **Cost optimisation**: enable Commit‑Use Discounts for long‑running Cloud Run and GKE nodes; consider pre‑emptible GKE nodes for Qdrant when traffic is low.
+- **Observability**: Cloud Monitoring dashboards for request latency, Qdrant CPU/Memory, Firestore read/write rates; alerts on CPU > 80 %.
+- **CI/CD**: GitHub Actions → Cloud Build → Artifact Registry → Cloud Run.
+- **Future scaling**: When > 100 k req / day, increase Cloud Run max‑scale, consider additional GKE node pool.
+
+---
+**Snapshot file created:** `/root/clinirise_session_snapshot.txt`
+You can reload this file or reference its path for future sessions.
+
+*Memory entry added to record the snapshot location for quick retrieval.*
