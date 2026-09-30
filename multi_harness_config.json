@@ -1,84 +1,52 @@
 {
   "harness_pool": [
     {
-      "name": "opencode",
-      "models": ["gpt-5.5-pro", "claude-opus-5"],
+      "name": "jcode",
+      "models": [
+        "auto"
+      ],
       "token_budget": 100000,
-      "default_model": "gpt-5.5-pro",
-      "cost_per_1k_tokens": 0.002,
-      "max_concurrent_tasks": 3,
-      "api_endpoint": "https://api.openai.com/v1",
+      "default_model": "auto",
+      "cost_per_1k_tokens": 0.0,
+      "max_concurrent_tasks": 2,
+      "api_endpoint": "local-jcode-cli",
       "priority": 1
     },
     {
-      "name": "cline",
-      "models": ["claude-sonnet-5", "gpt-4o"],
-      "token_budget": 80000,
-      "default_model": "claude-sonnet-5",
-      "cost_per_1k_tokens": 0.003,
+      "name": "opencode",
+      "models": [
+        "auto"
+      ],
+      "token_budget": 100000,
+      "default_model": "auto",
+      "cost_per_1k_tokens": 0.0,
       "max_concurrent_tasks": 2,
-      "api_endpoint": "https://api.anthropic.com/v1",
+      "api_endpoint": "local-opencode-cli",
       "priority": 2
     },
     {
       "name": "antigravity",
-      "models": ["gemini-2.5-pro", "gpt-5.6-sol"],
-      "token_budget": 60000,
-      "default_model": "gemini-2.5-pro",
-      "cost_per_1k_tokens": 0.004,
-      "max_concurrent_tasks": 1,
-      "api_endpoint": "https://generativelanguage.googleapis.com/v1",
+      "models": [
+        "gemini-3-pro-preview"
+      ],
+      "token_budget": 100000,
+      "default_model": "gemini-3-pro-preview",
+      "cost_per_1k_tokens": 0.0,
+      "max_concurrent_tasks": 2,
+      "api_endpoint": "jcode-antigravity-provider",
       "priority": 3
     },
     {
-      "name": "github_copilot",
-      "models": ["claude-3.5-sonnet", "gpt-4-turbo"],
-      "token_budget": 50000,
-      "default_model": "claude-3.5-sonnet",
-      "cost_per_1k_tokens": 0.005,
-      "max_concurrent_tasks": 2,
-      "api_endpoint": "https://api.github.com",
-      "priority": 4
-    },
-    {
-      "name": "azure_openai",
-      "models": ["gpt-35-turbo", "gpt-4"],
-      "token_budget": 70000,
-      "default_model": "gpt-35-turbo",
-      "cost_per_1k_tokens": 0.0015,
-      "max_concurrent_tasks": 3,
-      "api_endpoint": "https://openai.azure.com",
-      "priority": 5
-    },
-    {
-      "name": "claude_code",
-      "models": ["claude-opus-5", "claude-sonnet-5"],
-      "token_budget": 120000,
-      "default_model": "claude-sonnet-5",
-      "cost_per_1k_tokens": 0.003,
-      "max_concurrent_tasks": 2,
-      "api_endpoint": "https://api.anthropic.com/v1",
-      "priority": 6
-    },
-    {
-      "name": "jcode",
-      "models": ["gpt-5.5-pro", "claude-opus-5"],
+      "name": "cline",
+      "models": [
+        "auto"
+      ],
       "token_budget": 100000,
-      "default_model": "gpt-5.5-pro",
-      "cost_per_1k_tokens": 0.002,
-      "max_concurrent_tasks": 3,
-      "api_endpoint": "https://api.openai.com/v1",
-      "priority": 7
-    },
-    {
-      "name": "hermes",
-      "models": ["auto-relay"],
-      "token_budget": 90000,
-      "default_model": "auto-relay",
+      "default_model": "auto",
       "cost_per_1k_tokens": 0.0,
-      "max_concurrent_tasks": 2,
-      "api_endpoint": "local",
-      "priority": 8
+      "max_concurrent_tasks": 1,
+      "api_endpoint": "vscode-extension",
+      "priority": 4
     }
   ],
   "handoff_strategy": {

@@ -41,6 +41,7 @@ def make_orchestrator(small_budget=150, jev_enabled=True):
     }
     orch.harnesses = {}
     orch.agent_contexts = {}
+    orch._adapter_failures = {}  # circuit breaker state (matches __init__)
     from multi_harness_orchestrator import TokenMonitor, ContextPersistence
     orch.token_monitor = TokenMonitor(orch.config['handoff_strategy'])
     orch.context_persistence = ContextPersistence()

@@ -18,6 +18,9 @@ from enum import Enum
 import logging
 from pathlib import Path
 
+from harness_adapters import (ADAPTERS, AgentRunResult, extract_baton,
+                             render_baton_prompt)
+
 log = logging.getLogger(__name__)
 
 class HarnessStatus(Enum):
@@ -71,6 +74,7 @@ class MultiHarnessOrchestrator:
         self.config = self.load_config(config_path)
         self.harnesses = {}
         self.agent_contexts = {}
+        self._adapter_failures: Dict[str, Any] = {}  # circuit breaker state
         self.token_monitor = TokenMonitor(self.config['handoff_strategy'])
         self.context_persistence = ContextPersistence()
         
@@ -316,11 +320,163 @@ class MultiHarnessOrchestrator:
             else:
                 raise
     
+    def _adapter_available_for_relay(self, harness_name: str) -> bool:
+        """True if the harness's real agent is usable for a relay leg.
+
+        Circuit breaker: an adapter that has failed RECENTLY (within the same
+        orchestrator instance) is skipped. Without this, a hanging/failing
+        agent gets re-selected forever, spawning doomed processes - exactly
+        what the 'never crash' philosophy must prevent.
+        """
+        if harness_name in self._adapter_failures:
+            fails, last_ts = self._adapter_failures[harness_name]
+            if fails >= 2:
+                log.warning(f"Circuit breaker OPEN for {harness_name}: "
+                            f"{fails} recent adapter failures, skipping")
+                return False
+        adapter = ADAPTERS.get(harness_name)
+        if adapter is None:
+            return True  # simulated harness - always selectable
+        return adapter.check().available
+
+    def _record_adapter_failure(self, harness_name: str):
+        fails, _ = self._adapter_failures.get(harness_name, (0, 0))
+        self._adapter_failures[harness_name] = (fails + 1, time.time())
+
+    def _record_adapter_success(self, harness_name: str):
+        self._adapter_failures.pop(harness_name, None)
+
+    def _reset_budget_for_fresh_session(self, harness_name: str):
+        """Fresh session = fresh budget window for the new relay leg.
+
+        A new runner is a new process/API-accounting session. The old
+        runner's exhaustion applies to ITS session, not the new one, so the
+        budget resets to the configured total for the new leg. Without this,
+        the same-harness fresh-session fallback can never fire at the exact
+        moment it is designed for (remaining_tokens > 0 is false when
+        exhausted).
+        """
+        harness = self.harnesses.get(harness_name)
+        if not harness:
+            return
+        budget = harness['token_budget']
+        budget.used_tokens = 0
+        budget.remaining_tokens = budget.total_budget
+        log.info(f"Budget window reset for fresh {harness_name} session: "
+                 f"{budget.total_budget} tokens")
+
+    async def _execute_step_with_agent(self, execution_id: str, context: AgentContext,
+                                       harness: Dict, adapter) -> Any:
+        """Run ONE step of the task on the REAL agent CLI via an adapter.
+
+        The agent receives the full baton (task + plan + what's done +
+        what's next), works on the CURRENT step only, and returns an
+        updated baton. Real token usage updates the harness budget, so
+        exhaustion triggers the same relay handoff as simulation.
+        """
+        plan = context.execution_state.get('plan', {})
+        next_step_no = (context.execution_state.get('next_step')
+                        or (context.current_step + 1))
+        step_desc = next((s['description'] for s in plan.get('steps', [])
+                          if s['step'] == next_step_no), f"Step {next_step_no}")
+
+        # Fresh runner -> plain task brief. Mid-relay -> baton prompt so the
+        # agent resumes exactly where the previous runner stopped.
+        done_steps = [d for d in context.step_history]
+        if done_steps:
+            prompt = render_baton_prompt(
+                task=context.task, plan=plan,
+                done_outcomes=done_steps, next_step_desc=step_desc)
+        else:
+            prompt = (
+                f"TASK: {context.task}\n\n"
+                f"CURRENT STEP ({next_step_no} of {plan.get('total_steps', '?')}): "
+                f"{step_desc}\n\n"
+                f"Complete this step only. Be concise. Then output a handoff "
+                f"block for the next runner, formatted exactly:\n\n"
+                f"===BATON===\n"
+                f"DONE: <one line per completed step so far>\n"
+                f"PLAN: <remaining steps, one line each>\n"
+                f"NEXT: <what the next runner should do first>\n"
+                f"===END==="
+            )
+
+        result = await adapter.run(prompt, workdir=os.getcwd())
+        if not result.ok:
+            # Real agent failed: do NOT crash the relay. Log, trip the circuit
+            # breaker so this adapter is not re-selected, and treat like a
+            # harness error so the relay loop hands off to another runner.
+            log.error(f"Real agent {adapter.name} failed on step {next_step_no}: "
+                      f"{result.error[:200]}")
+            self._record_adapter_failure(adapter.name)
+            raise HarnessError(f"agent {adapter.name}: {result.error[:200]}")
+        self._record_adapter_success(adapter.name)
+
+        text = result.text
+
+        # Record the real outcome in the baton's history
+        context.current_step = next_step_no
+        context.last_updated = time.time()
+        if next_step_no not in plan.setdefault('completed_steps', []):
+            plan['completed_steps'].append(next_step_no)
+        plan['completed_steps'].sort()
+        plan['remaining_steps'] = [s['step'] for s in plan.get('steps', [])
+                                   if s['step'] not in plan['completed_steps']]
+        context.execution_state['status'] = 'running'
+        context.execution_state['next_step'] = (
+            plan['remaining_steps'][0] if plan['remaining_steps'] else None)
+
+        outcome = text[:600]  # real agent output IS the step outcome
+        context.conversation_history.append({
+            'timestamp': time.time(),
+            'input': f"Execute plan step {next_step_no} ({step_desc})",
+            'output': outcome,
+            'harness': harness['config']['name'],
+            'real_agent': True,
+        })
+        context.step_history.append({
+            'step': next_step_no,
+            'status': 'completed',
+            'description': step_desc,
+            'outcome': outcome,
+            'harness': harness['config']['name'],
+            'real_agent': True,
+        })
+
+        # REAL token accounting from the agent's own usage report
+        tokens_used = result.tokens_used or 500
+        harness['token_budget'].used_tokens += tokens_used
+        harness['token_budget'].remaining_tokens -= tokens_used
+        context.token_usage['total_tokens'] = tokens_used
+
+        is_final_step = not plan['remaining_steps']
+        return {
+            'status': 'completed' if is_final_step else 'in_progress',
+            'output': text[:800],
+            'harness': harness['config']['name'],
+            'execution_id': execution_id,
+            'step': next_step_no,
+            'timestamp': time.time(),
+            'real_agent': True,
+            'tokens_used': tokens_used,
+        }
+
     async def _simulate_task_execution(self, execution_id: str, context: AgentContext, 
                                       harness: Dict, preferences: Optional[Dict] = None) -> Any:
-        """Simulate task execution with a specific harness"""
-        
-        # Simulate agent execution - ONE step of the task
+        """Execute ONE step of the task on this harness.
+
+        If a real harness adapter is available for this harness name, run the
+        actual agent CLI (headless) and use its REAL token counts. Otherwise
+        fall back to simulation (legacy behavior) so tests and demos still
+        work on machines without the CLIs installed.
+        """
+        adapter = ADAPTERS.get(harness['config']['name'])
+        if (adapter is not None and adapter.check().available
+                and self._adapter_available_for_relay(harness['config']['name'])):
+            return await self._execute_step_with_agent(
+                execution_id, context, harness, adapter)
+
+        # ---- legacy simulation fallback ----
         await asyncio.sleep(0.05)  # Simulate processing time
 
         context.current_step += 1
@@ -430,16 +586,19 @@ class MultiHarnessOrchestrator:
         # Task-based harness selection
         task_complexity = self._estimate_task_complexity(task)
         
-        # Sort harnesses by availability and suitability
+        # Sort harnesses by availability and suitability. Prefer harnesses
+        # whose REAL agent is usable right now (honest availability + circuit
+        # breaker) over ones that would silently fall back to simulation.
         available_harnesses = []
         for harness_name, harness_info in self.harnesses.items():
             if harness_info['status'] == HarnessStatus.ACTIVE:
                 budget_efficiency = harness_info['token_budget'].remaining_tokens / harness_info['token_budget'].total_budget
-                available_harnesses.append((harness_name, budget_efficiency, task_complexity))
+                real_ready = self._adapter_available_for_relay(harness_name)
+                available_harnesses.append((harness_name, budget_efficiency, task_complexity, real_ready))
         
-        # Select best harness
+        # Select best harness: real-agent readiness first, then budget
         if available_harnesses:
-            available_harnesses.sort(key=lambda x: x[1], reverse=True)
+            available_harnesses.sort(key=lambda x: (x[3], x[1]), reverse=True)
             return available_harnesses[0][0]
         
         # Fallback to first active harness
@@ -461,6 +620,31 @@ class MultiHarnessOrchestrator:
         # Find next available harness (Jev-informed when possible)
         next_harness = self.find_next_available_harness(context.harness_name, task=task_hint)
         
+        # Relay fallback: when no OTHER harness is available (all others
+        # unconfigured/unavailable), a FRESH session of the same agent is still
+        # a valid relay leg - the baton makes it a new runner with zero shared
+        # memory. This is the "same CLI, new session" relay semantic.
+        #
+        # A fresh session carries a FRESH budget window: the new runner is a
+        # different process/API-accounting session, so the old runner's
+        # exhaustion must not doom the new leg. We reset the budget for the
+        # new session instead of requiring remaining_tokens > 0 (which is
+        # exactly what is NOT true at the moment of exhaustion).
+        if not next_harness:
+            current = self.harnesses.get(context.harness_name)
+            adapter = ADAPTERS.get(context.harness_name)
+            if (current and adapter and current['status'] == HarnessStatus.ACTIVE
+                    and self._adapter_available_for_relay(context.harness_name)):
+                log.info(f"No other harness available - relay continues with a "
+                         f"FRESH {context.harness_name} session (new runner, "
+                         f"same CLI, fresh budget window)")
+                self._reset_budget_for_fresh_session(context.harness_name)
+                next_harness = context.harness_name
+            else:
+                log.error("No other harness available AND same-harness fresh "
+                          "session not possible (adapter unusable or failed) - "
+                          "relay cannot continue")
+
         if next_harness:
             # Transfer context to new harness
             await self.transfer_context_to_harness(
@@ -493,7 +677,11 @@ class MultiHarnessOrchestrator:
             if harness_name != current_harness and harness_info['status'] == HarnessStatus.ACTIVE:
                 budget_ratio = harness_info['token_budget'].remaining_tokens / max(harness_info['token_budget'].total_budget, 1)
                 if harness_info['token_budget'].remaining_tokens > 0:
-                    candidates.append((harness_name, budget_ratio, harness_info))
+                    # Only hand the baton to a harness whose real agent is
+                    # actually usable right now (honest availability +
+                    # circuit breaker)
+                    if self._adapter_available_for_relay(harness_name):
+                        candidates.append((harness_name, budget_ratio, harness_info))
 
         if not candidates:
             return None
