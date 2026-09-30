@@ -11,7 +11,9 @@ Exits non-zero on any mismatch.
 import csv
 import json
 import math
+import os
 import statistics
+import subprocess
 import sys
 from datetime import date
 
@@ -193,6 +195,18 @@ def streaks(returns):
 
 
 def main():
+    # Self-heal for fresh clones: out/ is gitignored (regenerable), so if
+    # the report is missing, produce it with the committed analyzer from
+    # the committed sample CSVs - deterministic data, same tool.
+    if not os.path.isfile("out/report.json"):
+        print("[self-heal] out/report.json missing - generating with "
+              "stock_analyzer.py from the sample CSVs")
+        os.makedirs("out", exist_ok=True)
+        cmd = [sys.executable, "stock_analyzer.py", *SYMBOLS,
+               "--json", "out/report.json", "--csv", "out/metrics.csv",
+               "--export-series", "out/series.csv"]
+        subprocess.run(cmd, check=True,
+                       stdout=subprocess.DEVNULL if not sys.verbose else None)
     with open("out/report.json") as fh:
         report = {s["symbol"]: s for s in json.load(fh)["symbols"]}
 
