@@ -79,6 +79,15 @@ def main():
         start = headers[start_hdr_idx][0]
         end = headers[start_hdr_idx + 1][0] - 1 if start_hdr_idx + 1 < 3 \
             else len(lines)
+        if start_hdr_idx + 1 == 3:
+            # Last section: stop at the next top-level header if one
+            # exists (e.g. "## Appendix"), so appendix content does not
+            # leak into the section body (breaks the hatch count when the
+            # doc carries a test plan after Section 3).
+            for j in range(start, len(lines)):
+                if lines[j].startswith("## ") and j + 1 != start:
+                    end = j
+                    break
         return "\n".join(lines[start:end])
 
     s1, s2, s3 = body(0), body(1), body(2)

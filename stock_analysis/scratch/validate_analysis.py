@@ -205,8 +205,9 @@ def main():
         cmd = [sys.executable, "stock_analyzer.py", *SYMBOLS,
                "--json", "out/report.json", "--csv", "out/metrics.csv",
                "--export-series", "out/series.csv"]
-        subprocess.run(cmd, check=True,
-                       stdout=subprocess.DEVNULL if not sys.verbose else None)
+        proc = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        if proc.stdout:
+            print(proc.stdout)
     with open("out/report.json") as fh:
         report = {s["symbol"]: s for s in json.load(fh)["symbols"]}
 
