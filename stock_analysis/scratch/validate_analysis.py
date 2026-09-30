@@ -202,7 +202,9 @@ def main():
         print("[self-heal] out/report.json missing - generating with "
               "stock_analyzer.py from the sample CSVs")
         os.makedirs("out", exist_ok=True)
-        cmd = [sys.executable, "stock_analyzer.py", *SYMBOLS,
+        cmd = [sys.executable, "stock_analyzer.py",
+               *[f"{s}.csv" for s in SYMBOLS],
+               "--risk-free", str(RISK_FREE),
                "--json", "out/report.json", "--csv", "out/metrics.csv",
                "--export-series", "out/series.csv"]
         proc = subprocess.run(cmd, check=True, capture_output=True, text=True)
