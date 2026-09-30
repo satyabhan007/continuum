@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Multi-Harness Orchestrator is a local tool designed to manage multiple agent harnesses (opencode, cline, antigravity, github_copilot, azure_openai) with seamless token management, context preservation, and automatic handoff capabilities. It ensures continuous execution across different agent harnesses even when token limits are exhausted.
+The Multi-Harness Orchestrator is a local tool designed to manage multiple agent harnesses (jcode, opencode, antigravity, cline) with seamless token management, context preservation, and automatic handoff capabilities. It ensures continuous execution across different agent harnesses even when token limits are exhausted.
 
 ## Key Features
 
@@ -35,7 +35,7 @@ The Multi-Harness Orchestrator is a local tool designed to manage multiple agent
 
 ```
 Multi-Harness Orchestrator (Simplified)
-├── Harness Pool (opencode, cline, antigravity, github_copilot, azure_openai)
+├── Harness Pool (jcode, opencode, antigravity, cline)
 ├── Token Monitoring System
 ├── Context Persistence Layer
 ├── Task Execution Engine
@@ -83,7 +83,7 @@ python demo.py
 
 ### MultiHarnessOrchestrator Class
 
-#### `__init__(config_path: str = "config/multi_harness_config.json")`
+#### `__init__(config_path: str = "multi_harness_config.json")`
 
 Initialize the orchestrator with configuration.
 
@@ -128,10 +128,10 @@ Check if a harness is available.
 
 ### Configuration File
 
-The system uses `config/multi_harness_config.json` for configuration. Key settings include:
+The system uses `multi_harness_config.json` (repo root) for configuration. Key settings include:
 
 #### Harness Pool Configuration
-- **name**: Harness identifier (opencode, cline, antigravity, github_copilot, azure_openai)
+- **name**: Harness identifier (jcode, opencode, antigravity, cline)
 - **token_budget**: Total tokens available for this harness
 - **models**: List of supported models
 - **default_model**: Default model for this harness
@@ -177,8 +177,15 @@ The system uses `config/multi_harness_config.json` for configuration. Key settin
 ### Running Tests
 
 ```bash
-# Run unit tests
-pytest tests/ -v
+# Relay logic suite (simulated harnesses, no real agents, no token spend)
+python3 test_relay.py
+
+# Retry-with-backoff design validation (injected clocks, ~0.1s)
+python3 scratch/test_retry_backoff_reference.py
+
+# Opt-in, spends real tokens - only on machines with the CLIs configured
+python3 test_relay_real.py    # real-adapter integration
+python3 test_relay_live.py   # full live relay legs (jcode CLI)
 ```
 
 ### Adding New Harnesses
@@ -227,9 +234,8 @@ multi-harness-project/
 │   └── Main orchestrator implementation
 ├── demo.py
 │   └── Demonstration script
-├── config/
-│   └── multi_harness_config.json
-│       └── Configuration file
+├── multi_harness_config.json
+│   └── Configuration file
 ├── README.md
 │   └── Project documentation
 ├── requirements.txt
@@ -243,7 +249,13 @@ multi-harness-project/
 
 ## Testing
 
-Run the demonstration to see the system in action:
+The full relay logic suite:
+
+```bash
+python3 test_relay.py
+```
+
+Run the demonstration to see the system in action (simulated harnesses):
 
 ```bash
 python demo.py
