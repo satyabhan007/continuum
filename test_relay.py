@@ -18,15 +18,31 @@ class TestRelay(unittest.TestCase):
         if os.path.exists(TEST_STATE_FILE):
             os.remove(TEST_STATE_FILE)
 
-    def test_start_harness(self):
+    def test_start_harness_basic(self):
         result = self.orchestrator.start("harness-1")
         self.assertTrue(result)
 
         state = self.orchestrator.get_state()
         self.assertIn("harness-1", state["harnesses"])
         self.assertEqual(state["harnesses"]["harness-1"]["state"], "running")
+        self.assertFalse(state["harnesses"]["harness-1"]["worktree"])
+        self.assertIsNone(state["harnesses"]["harness-1"]["background_cmd"])
 
-    def test_switch_harness(self):
+    def test_start_harness_with_parameters(self):
+        result = self.orchestrator.start("harness-full", worktree=True, background_cmd="echo hello")
+        self.assertTrue(result)
+
+        state = self.orchestrator.get_state()
+        self.assertIn("harness-full", state["harnesses"])
+        self.assertTrue(state["harnesses"]["harness-full"]["worktree"])
+        self.assertEqual(state["harnesses"]["harness-full"]["background_cmd"], "echo hello")
+
+    def test_start_existing_harness(self):
+        self.orchestrator.start("harness-1")
+        result = self.orchestrator.start("harness-1")
+        self.assertFalse(result)
+
+    def test_switch_harness_basic(self):
         self.orchestrator.start("harness-1")
         self.orchestrator.start("harness-2")
 
@@ -53,11 +69,6 @@ class TestRelay(unittest.TestCase):
         self.assertNotIn("harness-1", state["harnesses"])
         self.assertIsNone(state["active_harness"])
 
-    def test_start_existing_harness(self):
-        self.orchestrator.start("harness-1")
-        result = self.orchestrator.start("harness-1")
-        self.assertFalse(result)
-
     def test_switch_nonexistent_harness(self):
         result = self.orchestrator.switch("harness-1")
         self.assertFalse(result)
@@ -65,6 +76,36 @@ class TestRelay(unittest.TestCase):
     def test_stop_nonexistent_harness(self):
         result = self.orchestrator.stop("harness-1")
         self.assertFalse(result)
+
+    def test_corrupted_state_file(self):
+        # Create a corrupted state file
+        with open(TEST_STATE_FILE, "w") as f:
+            f.write("{ invalid json")
+
+        # Load orchestrator with corrupted state; it should handle gracefully
+        orchestrator = MultiHarnessOrchestrator(state_file=TEST_STATE_FILE)
+
+        # State should be empty and not crash
+        self.assertEqual(orchestrator.get_state()["harnesses"], {})
+        self.assertIsNone(orchestrator.get_state()["active_harness"])
+
+        # Try to start a harness to ensure saving overwrites bad state
+        orchestrator.start("harness-recovery")
+
+        with open(TEST_STATE_FILE, "r") as f:
+            state = json.load(f)
+            self.assertIn("harness-recovery", state["harnesses"])
+
+    def test_list_harnesses(self):
+        self.orchestrator.start("harness-a")
+        self.orchestrator.start("harness-b")
+        self.orchestrator.switch("harness-a")
+
+        # Call list_harnesses and ensure it returns the correct structure
+        harnesses = self.orchestrator.list_harnesses()
+
+        self.assertIn("harness-a", harnesses)
+        self.assertIn("harness-b", harnesses)
 
 if __name__ == "__main__":
     unittest.main()
