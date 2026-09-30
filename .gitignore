@@ -1,1 +1,4 @@
 __pycache__/
+orchestrator.log
+*.json
+harness_error.log

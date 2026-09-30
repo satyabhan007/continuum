@@ -4,8 +4,48 @@ import json
 import os
 import subprocess
 import time
+import logging
+import psutil
+from functools import wraps
 
 STATE_FILE = ".harness_state.json"
+LOG_FILE = "orchestrator.log"
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(LOG_FILE),
+        logging.StreamHandler()
+    ]
+)
+
+logger = logging.getLogger(__name__)
+
+def benchmark(func):
+    """Decorator to benchmark execution time and memory footprint."""
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        process = psutil.Process(os.getpid())
+        mem_before = process.memory_info().rss
+        start_time = time.perf_counter()
+
+        try:
+            result = func(*args, **kwargs)
+        except Exception as e:
+            logger.error(f"Error executing {func.__name__}: {e}", exc_info=True)
+            raise
+
+        end_time = time.perf_counter()
+        mem_after = process.memory_info().rss
+
+        elapsed_time_ms = (end_time - start_time) * 1000
+        mem_diff_kb = (mem_after - mem_before) / 1024
+
+        logger.info(f"[BENCHMARK] {func.__name__} | Time: {elapsed_time_ms:.3f} ms | Memory Delta: {mem_diff_kb:+.2f} KB")
+        return result
+    return wrapper
 
 class MultiHarnessOrchestrator:
     def __init__(self, state_file=STATE_FILE):
@@ -21,22 +61,30 @@ class MultiHarnessOrchestrator:
                     state = json.load(f)
                     self.harnesses = state.get("harnesses", {})
                     self.active_harness = state.get("active_harness")
-            except json.JSONDecodeError:
-                pass
+                logger.debug(f"Loaded state from {self.state_file}")
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse state file {self.state_file}: {e}")
+            except Exception as e:
+                logger.error(f"Unexpected error reading state file {self.state_file}: {e}")
 
     def save_state(self):
-        with open(self.state_file, "w") as f:
-            json.dump({
-                "harnesses": self.harnesses,
-                "active_harness": self.active_harness
-            }, f, indent=4)
+        try:
+            with open(self.state_file, "w") as f:
+                json.dump({
+                    "harnesses": self.harnesses,
+                    "active_harness": self.active_harness
+                }, f, indent=4)
+            logger.debug(f"Saved state to {self.state_file}")
+        except Exception as e:
+            logger.error(f"Failed to save state to {self.state_file}: {e}")
 
+    @benchmark
     def start(self, name, worktree=False, background_cmd=None):
         if name in self.harnesses:
-            print(f"Harness '{name}' is already running.")
+            logger.warning(f"Harness '{name}' is already running.")
             return False
 
-        print(f"Starting harness: {name}")
+        logger.info(f"Starting harness: {name}")
         self.harnesses[name] = {
             'state': 'running',
             'worktree': worktree,
@@ -46,48 +94,52 @@ class MultiHarnessOrchestrator:
         self.save_state()
         return True
 
+    @benchmark
     def stop(self, name):
         if name not in self.harnesses:
-            print(f"Harness '{name}' not found.")
+            logger.warning(f"Harness '{name}' not found.")
             return False
 
-        print(f"Stopping harness: {name}")
+        logger.info(f"Stopping harness: {name}")
         self.harnesses.pop(name)
         if self.active_harness == name:
             self.active_harness = None
+            logger.info(f"Cleared active harness since '{name}' was stopped.")
         self.save_state()
         return True
 
+    @benchmark
     def switch(self, name, snapshot=None):
         if name not in self.harnesses:
-            print(f"Harness '{name}' not found. Please start it first.")
+            logger.warning(f"Harness '{name}' not found. Please start it first.")
             return False
 
         if self.active_harness == name:
-            print(f"Harness '{name}' is already active.")
+            logger.info(f"Harness '{name}' is already active.")
             return True
 
         if self.active_harness:
-            print(f"Transitioning from {self.active_harness} to {name}")
+            logger.info(f"Transitioning from {self.active_harness} to {name}")
             if snapshot:
-                print(f"  -> Created snapshot '{snapshot}' for {self.active_harness}")
+                logger.info(f"Created snapshot '{snapshot}' for {self.active_harness}")
         else:
-            print(f"Switching active harness to {name}")
+            logger.info(f"Switching active harness to {name}")
 
         self.active_harness = name
         self.save_state()
         return True
 
+    @benchmark
     def list_harnesses(self):
-        print("Harnesses:")
+        logger.info("Listing harnesses:")
         if not self.harnesses:
-            print("  No harnesses running.")
+            logger.info("  No harnesses running.")
             return self.harnesses
 
         for name, data in self.harnesses.items():
             status = data['state']
             marker = "*" if self.active_harness == name else " "
-            print(f" {marker} {name} - {status}")
+            logger.info(f" {marker} {name} - {status}")
         return self.harnesses
 
     def get_state(self):

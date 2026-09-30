@@ -78,17 +78,21 @@ if $WORKTREE; then
 fi
 CMD+=" $RESUME_ARG"
 
+# Setup Error Logging
+ERROR_LOG="harness_error.log"
+
 # If a background command is supplied, we will start hermes in a new tmux session and send the command.
 if [[ -n "$BG_CMD" ]]; then
     SESSION_NAME="hermes_${TITLE:-$(date +%s)}"
     echo "Launching new Hermes harness in tmux session '$SESSION_NAME'..."
-    tmux new-session -d -s "$SESSION_NAME" "$CMD"
+    tmux new-session -d -s "$SESSION_NAME" "$CMD 2>> $ERROR_LOG"
     # Give hermes a moment to start up
     sleep 5
     echo "Sending background command to hermes..."
     tmux send-keys -t "$SESSION_NAME" "$BG_CMD" C-m
     echo "Hermes harness ready. Attach with: tmux attach -t $SESSION_NAME"
+    echo "Errors will be logged to $ERROR_LOG"
 else
     echo "Starting new Hermes harness..."
-    exec $CMD
+    exec $CMD 2>> $ERROR_LOG
 fi
