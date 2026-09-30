@@ -12,10 +12,11 @@ Deliverable type: design only. No production code changes are required by this d
 # multi_harness_orchestrator.py :: _execute_step_with_agent (line 404 today)
 result = await adapter.run(prompt, workdir=os.getcwd())   # one shot
 if not result.ok:
+    self._record_adapter_failure(adapter.name)           # circuit breaker
     raise HarnessError(...)                               # straight to handoff
 ```
 
-Any transient hiccup (CLI hiccups, non-JSON output, empty response) immediately burns the whole attempt and forces a cross-harness handoff, which is far more expensive than a short in-place retry. The helper below adds the cheap middle tier between "first try" and "full handoff", while honoring the project's core rule: **NEVER crash, always degrade gracefully** (`harness_adapters.py`).
+Any transient hiccup (CLI hiccups, non-JSON output, empty response) immediately burns the whole attempt and forces a cross-harness handoff, which is far more expensive than a short in-place retry. (The circuit-breaker tick prevents a failing adapter from being re-selected, but one bad result still ends the step - no retry tier exists.) The helper below adds the cheap middle tier between "first try" and "full handoff", while honoring the project's core rule: **NEVER crash, always degrade gracefully** (`harness_adapters.py`).
 
 ---
 

@@ -5,7 +5,7 @@ Deliverable type: design only. No production code changes required by this doc.
 
 Grounded facts (verified in this workspace):
 - `multi_harness_config.json` `execution_settings` (lines 70-78) defines `retry_attempts: 3`, `backoff_factor: 1.5`, `max_execution_time_seconds: 300`. Nothing drives retries with them today (`max_execution_time_seconds` is only read once, as a step-count heuristic at `multi_harness_orchestrator.py:171`).
-- One unprotected call site: `multi_harness_orchestrator.py:404`, `result = await adapter.run(prompt, workdir=os.getcwd())` one shot, then `result.ok` false straight to `HarnessError` and a cross-harness handoff.
+- One unprotected call site: `multi_harness_orchestrator.py:404`, `result = await adapter.run(prompt, workdir=os.getcwd())` one shot, then `result.ok` false records a circuit-breaker failure and raises `HarnessError` for a cross-harness handoff. (The breaker prevents re-selecting a failing adapter, but one bad result still ends the step - no retry tier exists.)
 - Adapters promise `run()` never raises and always return `AgentRunResult(ok, text, tokens_used, provider, model, error, session_id)` (`harness_adapters.py:70-78`). The helper touches only `ok`/`error`/`tokens_used`; `session_id` is passthrough.
 - Project rule: NEVER crash, always degrade gracefully. The helper adds the cheap middle tier between "first try" and "full handoff".
 
