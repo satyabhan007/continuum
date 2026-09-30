@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """scratch/test_retry_backoff_reference.py - executes the micro-design test plan.
 
-Runs the 18 validation case functions (the doc appendix's 13, plus 5 grounded
-extras: 6b negative-delay clamp, 8b garbage-return coercion, 14 classifier
-matrix, 15 no-deadline, 15b unconditional max_delay cap) against
+Runs the 18 validation case functions (the doc appendix's 14, including 8b,
+plus 4 grounded extras: 6b negative-delay clamp, 14 classifier matrix,
+15 no-deadline, 15b unconditional max_delay cap) against
 scratch/retry_backoff_reference.py. All sleeps/clocks are injected so
 the suite finishes in ~0.1s with no real waiting.
 
