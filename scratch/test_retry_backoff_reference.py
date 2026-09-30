@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """scratch/test_retry_backoff_reference.py - executes the micro-design test plan.
 
-Runs the 17 validation case functions (the doc appendix's 13, plus 4 grounded
-extras) against scratch/retry_backoff_reference.py. All sleeps/clocks are injected so
+Runs the 18 validation case functions (the doc appendix's 13, plus 5 grounded
+extras: 6b negative-delay clamp, 8b garbage-return coercion, 14 classifier
+matrix, 15 no-deadline, 15b unconditional max_delay cap) against
+scratch/retry_backoff_reference.py. All sleeps/clocks are injected so
 the suite finishes in ~0.1s with no real waiting.
 
 Run: python3 scratch/test_retry_backoff_reference.py
@@ -266,6 +268,33 @@ def case_8_none_return():
           default_is_retryable(None, None) is True)
 
 
+# ---------------------------------------------------------------- case 8b
+def case_8b_garbage_return():
+    """FM11 broadened: garbage (not None, no .ok) must not crash anything.
+
+    The doc's pre-fix classifier did `result.ok` directly; a string return
+    would AttributeError, violating FM10's "never crashes" claim. The
+    reference coerces garbage to AgentRunResult(ok=False, error="adapter
+    returned <TypeName>") BEFORE on_attempt and classification.
+    """
+    fn, state = seq_fn(["Command timed out", "crashed", "still garbage"])
+    clock = FakeClock()
+    rec, on_attempt = recorder()
+    res = asyncio.run(retry_with_backoff(
+        fn, RetryPolicy(attempts=3, jitter=False), on_attempt=on_attempt,
+        sleep=clock.sleep, now=clock.now))
+    check("8b all 3 attempts made", state["n"] == 3, f"calls={state['n']}")
+    check("8b returns AgentRunResult, not garbage",
+          isinstance(res, AgentRunResult))
+    check("8b ok is False", res.ok is False)
+    check("8b error names the type",
+          res.error == "adapter returned str", f"error={res.error!r}")
+    check("8b on_attempt never saw raw garbage",
+          all(isinstance(r, AgentRunResult) for _, r, _ in rec["attempts"]))
+    check("8b classifier never crashed on garbage",
+          default_is_retryable("Command timed out", None) is True)
+
+
 # ---------------------------------------------------------------- case 9
 def case_9_nonretryable():
     items = [R(ok=False, error="non-JSON output"),
@@ -431,7 +460,7 @@ def main():
                  case_3_all_fail, case_4_unavailable_adapter,
                  case_5_deadline_mid_loop, case_6_clamping, case_6b_negative_delay,
                  case_7_real_monotonic_deadline, case_8_none_return,
-                 case_9_nonretryable, case_10_token_aggregation,
+                 case_8b_garbage_return, case_9_nonretryable, case_10_token_aggregation,
                  case_11_cancellation, case_12_custom_veto,
                  case_13_exceptions_then_success, case_14_classifier_matrix,
                  case_15_no_deadline, case_15b_max_delay_cap):

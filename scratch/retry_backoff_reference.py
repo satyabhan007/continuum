@@ -81,7 +81,10 @@ def default_is_retryable(result: Any, exc: Optional[BaseException]) -> bool:
         return False
     if result is None and exc is None:
         return True   # fn returned None: contract violation, transient (FM11)
-    if result is not None and not result.ok:
+    if result is not None and not getattr(result, "ok", False):
+        # getattr (not result.ok): garbage without .ok must not crash the
+        # classifier either (FM10/FM11); it reads as a failed transient
+        # attempt, same philosophy as None.
         err = (getattr(result, "error", "") or "").lower()
         if any(s in err for s in _NON_RETRYABLE_SUBSTRINGS):
             return False
@@ -129,6 +132,13 @@ async def retry_with_backoff(
             result = await fn()
         except Exception as e:             # NOT BaseException: FM12
             exc = e
+        if exc is None and result is not None and not hasattr(result, "ok"):
+            # FM11 (broadened in round-2 validation): a contract-violating
+            # adapter may return garbage that is not None and not an
+            # AgentRunResult. Coerce BEFORE on_attempt and the classifier so
+            # nothing downstream can crash on a missing .ok attribute.
+            result = AgentRunResult(
+                ok=False, error=f"adapter returned {type(result).__name__}")
         if on_attempt is not None:
             on_attempt(attempt, result, exc)
         if isinstance(exc, NonRetryableError):

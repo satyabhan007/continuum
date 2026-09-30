@@ -70,8 +70,11 @@ def default_is_retryable(result: Any, exc: Optional[BaseException]) -> bool:
     if isinstance(exc, NonRetryableError):
         return False
     if result is None and exc is None:
-        return True   # fn returned None: contract violation, treat as transient (FM11)
-    if result is not None and not result.ok:
+        return True   # fn returned None: contract violation, transient (FM11)
+    if result is not None and not getattr(result, "ok", False):
+        # getattr, not result.ok: garbage without .ok must not crash the
+        # classifier either (FM10/FM11); it reads as a failed transient
+        # attempt, same philosophy as None.
         err = (getattr(result, "error", "") or "").lower()
         if ("not installed" in err or "not configured" in err
                 or "not authenticated" in err or "credentials" in err
@@ -95,12 +98,17 @@ async def retry_with_backoff(
     adapters). If it returns None, the attempt is treated as a transient
     failure and, if it persists to the last attempt, a synthesized
     AgentRunResult(ok=False, error="adapter returned None") is returned -
-    the caller NEVER receives None (FM11).
+    the caller NEVER receives None (FM11). A non-None garbage return is
+    likewise coerced to AgentRunResult(ok=False, error="adapter returned
+    <TypeName>") before anything downstream can touch it (FM11).
 
     on_attempt(attempt_no, result, exc) fires after EVERY attempt,
     including ok=False ones, so callers can count tokens spent on failed
     attempts (FM6). The return value alone cannot do this: it carries
     only the LAST attempt. A cancelled attempt never fires it (FM12).
+    A garbage return (not None, but no `ok` attribute) is coerced to a
+    failed AgentRunResult BEFORE on_attempt and classification, so no
+    downstream code can crash on the missing attribute (FM11).
 
     deadline is a budget measured from loop entry (start = now() once,
     then (now() - start) + sleep_k > deadline stops the loop), never an
@@ -148,7 +156,7 @@ if not result.ok:
 - **`sleep` and `now` are injected.** Tests run in microseconds with a fake clock; production uses `asyncio.sleep` (event-loop friendly, see FM7) and `time.monotonic` (immune to wall-clock jumps).
 - **`is_retryable` is a parameter.** Per-harness policies (e.g., never retry `cline`'s stub) are possible without touching the loop.
 - **`on_attempt` is the FM6 hook.** Failed attempts burn tokens too, and the return value only carries the last attempt's `tokens_used`; the caller aggregates spend across attempts via this callback (validation showed a 3-attempt run spending 1000 tokens would otherwise be booked as 200).
-- **`fn` returning `None` is a failed attempt, not a crash.** A contract-violating adapter yields a synthesized `AgentRunResult(ok=False)`; `None` never leaks to the caller's `result.ok` access. The classifier itself also treats a bare `None` return (no exception) as transient, so the behavior does not depend on whether the implementation synthesizes the placeholder before or after classification. The helper imports `AgentRunResult` from `harness_adapters` (no import cycle).
+- **`fn` returning `None` or garbage is a failed attempt, not a crash.** A contract-violating adapter yields a synthesized `AgentRunResult(ok=False)` (`error="adapter returned None"` for None, `error="adapter returned <TypeName>"` for garbage without an `ok` attribute); nothing ever leaks to the caller's `result.ok` access, and the loop coerces garbage BEFORE `on_attempt` and classification so neither can crash on the missing attribute. The classifier also treats a bare `None` return (no exception) as transient via `getattr(result, "ok", False)`, so the behavior does not depend on coercion order. The helper imports `AgentRunResult` from `harness_adapters` (no import cycle).
 - **`NonRetryableError` propagates immediately from any attempt.** Fail-fast is the exception's purpose; swallowing it until the final attempt would contradict its name (escape hatch 1).
 - **Cancellation is exempt from the never-raise contract.** The helper catches `Exception`, not `BaseException`, so `asyncio.CancelledError` and `KeyboardInterrupt` escape the loop the instant `fn` raises them (escape hatch 3, FM12). Retrying a cancellation fights the event loop's shutdown; converting it to `ok=False` would mask a deliberate abort as a harness failure.
 - **No new mandatory config.** `retry_attempts`, `backoff_factor`, and `max_execution_time_seconds` keep their current names and values; `retry_base_delay`, `retry_max_delay`, `retry_jitter` are optional additions with code defaults.
@@ -202,7 +210,7 @@ Worst-case added latency with defaults: **2.50s** of sleeping across 3 attempts 
 | FM8 | Config drift / missing keys | Unknown or absent keys fall back to code defaults (3 / 1.5 / 300) | `load_config` already merges file config over defaults; the helper inherits that tolerance |
 | FM9 | "Empty text" false negative | `ok=bool(text)` in adapters means a legitimately empty rc=0 run is retryable and eventually fails | Acceptable: a relay step must produce a baton block; empty output IS a failure by definition |
 | FM10 | Classifier misjudges | A wrong `is_retryable` decision wastes one retry (or skips one) but never crashes or hangs | Classifier is injectable per call site; the substring list in `default_is_retryable` is the single place to tune |
-| FM11 | `fn` returns `None` (contract-violating adapter) | Treated as a transient failed attempt; if it persists to the last attempt, return a synthesized `AgentRunResult(ok=False, error="adapter returned None")` | "Never crash" must also cover broken adapters: a `None` leaking to the caller explodes at `result.ok` (AttributeError) - exactly what the relay must not do |
+| FM11 | `fn` returns `None` or garbage without an `ok` attribute (contract-violating adapter) | Treated as a transient failed attempt. Garbage is coerced to `AgentRunResult(ok=False, error="adapter returned <TypeName>")` before `on_attempt` and classification; if the failure persists to the last attempt, a synthesized `ok=False` result is returned | "Never crash" must also cover broken adapters: a `None` leaking to the caller explodes at `result.ok` (AttributeError), and an un-coerced garbage return crashes `on_attempt`/classifier the same way - exactly what the relay must not do |
 | FM12 | Cancellation (`asyncio.CancelledError`, `KeyboardInterrupt`) while `fn` runs | Propagates immediately from the raising attempt; never classified, never retried, never converted to `ok=False`, never reported to `on_attempt` | The loop catches `Exception`, not `BaseException`, so both escape naturally. A retried cancellation fights the event loop's shutdown; a fabricated `ok=False` would mask a deliberate abort as a harness failure - and burn up to `attempts-1` extra runs after the caller already asked to stop |
 
 **The three contract escape hatches:** (1) `NonRetryableError` raised by `fn` propagates immediately from ANY attempt, not just the final one - fail-fast is the exception's entire purpose, and swallowing it would contradict its name. (2) If the last completed attempt raised an unexpected exception and the loop can proceed no further - attempts exhausted, a custom `is_retryable` veto, or a deadline stop (R4) - the helper re-raises that exception rather than fabricating a result. (Impossible for today's adapters, which convert exceptions to `ok=False` results, but possible for buggy future ones; if a later attempt succeeds instead, the earlier exception is observable only through `on_attempt`'s `exc` argument.) (3) Cancellation escapes immediately: the helper catches `Exception`, not `BaseException`, so `asyncio.CancelledError` and `KeyboardInterrupt` propagate the instant `fn` raises them (FM12). Ordinary failures never raise; programming bugs and deliberate aborts should not be silently swallowed. A `None` return is NOT an escape hatch - it is FM11 and degrades to a failed result.
@@ -221,6 +229,7 @@ Worst-case added latency with defaults: **2.50s** of sleeping across 3 attempts 
   6. `attempts: 1` and `backoff_factor: 0.5` -> clamped, single attempt, no crash (R5).
   7. Deadline with the REAL `time.monotonic` injected as `now` -> all 3 attempts still run, because the budget is measured from loop start (R4). Guards the absolute-vs-relative bug found in validation: with the absolute reading, a machine up >300s silently ran 1 attempt.
   8. `fn` returns `None` every time -> helper returns `ok=False` with error `adapter returned None`, 3 attempts made, no exception, caller can safely access `result.ok` (FM11).
+  8b. `fn` returns garbage (e.g., a string, not `None`, no `ok` attribute) every time -> helper returns `ok=False` with error `adapter returned str`, all attempts made, `on_attempt` never saw the raw garbage, classifier never crashed (FM11 broadened).
   9. `fn` raises `NonRetryableError` on attempt 2 of 3 -> propagates immediately after that attempt; `on_attempt` observed both attempts (the second with `exc=NonRetryableError`) and no retry follows it (escape hatch 1).
   10. Token aggregation: attempts spending 500/300/200 tokens -> `on_attempt` total = 1000 even though the returned result reports `tokens_used=200` (FM6).
   11. `fn` raises `asyncio.CancelledError` on attempt 2 of 3 -> propagates immediately: no sleep, no third attempt, no fabricated result (FM12, escape hatch 3).
