@@ -79,19 +79,53 @@ class MultiHarnessOrchestrator:
             logger.error(f"Failed to save state to {self.state_file}: {e}")
 
     @benchmark
-    def start(self, name, worktree=False, background_cmd=None):
+    def start(self, name, worktree=False, background_cmd=None, agent_type="hermes"):
         if name in self.harnesses:
             logger.warning(f"Harness '{name}' is already running.")
             return False
 
-        logger.info(f"Starting harness: {name}")
+        logger.info(f"Starting harness '{name}' using agent type: {agent_type}")
+
+        # Determine the launch command based on agent type
+        cmd = background_cmd
+        if not cmd:
+            if agent_type == "hermes":
+                cmd = "hermes --continue"
+            elif agent_type == "jcode":
+                cmd = "jcode start"
+            elif agent_type == "opencode":
+                cmd = "opencode run"
+            elif agent_type == "antigravity":
+                cmd = "antigravity daemon"
+            else:
+                cmd = "bash" # Default fallback
+
+        # Add worktree args if needed (simulation - usually agents handle this differently)
+        if worktree and agent_type == "hermes":
+            cmd = "hermes -w --continue"
+
+        # Launch tmux session to isolate the agent
+        session_name = f"{agent_type}_{name}"
+        logger.info(f"Launching in tmux session: {session_name} with command: {cmd}")
+
+        try:
+            subprocess.Popen(
+                ["tmux", "new-session", "-d", "-s", session_name, cmd],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        except FileNotFoundError:
+            logger.warning("tmux is not installed or not found in PATH. Proceeding without physical isolation simulation.")
+
         self.harnesses[name] = {
             'state': 'running',
+            'agent_type': agent_type,
             'worktree': worktree,
-            'background_cmd': background_cmd,
+            'background_cmd': cmd,
+            'session_name': session_name,
             'started_at': time.time(),
             'tokens_used': 0,
-            'token_limit': 128000 # Default context limit (e.g., GPT-4o, Claude 3)
+            'token_limit': 128000 # Default context limit
         }
         self.save_state()
         return True
@@ -103,32 +137,29 @@ class MultiHarnessOrchestrator:
         stale_harnesses = []
 
         for name, data in self.harnesses.items():
-            # If a background_cmd was used, we expect a tmux session named hermes_<name> (or similar)
-            if data.get('background_cmd'):
-                try:
-                    # Execute tmux has-session safely without shell=True to avoid injection
-                    # We look for a session containing the name suffix, assuming 'hermes_<name>' or similar logic
-                    # Using the actual session name pattern generated in the bash script
-                    session_name_prefix = "hermes_"
+            session_name = data.get('session_name')
 
-                    # Instead of exact matching the random timestamp, we parse 'tmux ls -F "#{session_name}"'
+            if session_name:
+                try:
+                    # Parse 'tmux ls -F "#{session_name}"' safely
                     output = subprocess.check_output(["tmux", "ls", "-F", "#{session_name}"], stderr=subprocess.DEVNULL, text=True)
 
-                    # Exact and safe Python string matching
                     is_alive = False
                     for line in output.strip().split('\n'):
-                        if name in line and session_name_prefix in line:
+                        if line.strip() == session_name:
                             is_alive = True
                             break
 
                     if not is_alive:
-                        logger.warning(f"Harness '{name}' appears dead (no tmux session found). Marking stale.")
+                        logger.warning(f"Harness '{name}' appears dead (tmux session '{session_name}' not found). Marking stale.")
                         stale_harnesses.append(name)
 
                 except subprocess.CalledProcessError:
-                    # Tmux server not running or no sessions at all
-                    logger.warning(f"Harness '{name}' appears dead (tmux server off). Marking stale.")
+                    logger.warning(f"Harness '{name}' appears dead (tmux server off or no sessions). Marking stale.")
                     stale_harnesses.append(name)
+                except FileNotFoundError:
+                    logger.warning("tmux is not installed. Skipping health check.")
+                    break
 
         for name in stale_harnesses:
             self.harnesses[name]['state'] = 'stale'
@@ -170,7 +201,20 @@ class MultiHarnessOrchestrator:
             return False
 
         logger.info(f"Stopping harness: {name}")
-        self.harnesses.pop(name)
+        data = self.harnesses.pop(name)
+
+        # Kill the associated tmux session
+        session_name = data.get('session_name')
+        if session_name:
+            try:
+                subprocess.Popen(
+                    ["tmux", "kill-session", "-t", session_name],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+            except FileNotFoundError:
+                pass
+
         if self.active_harness == name:
             self.active_harness = None
             logger.info(f"Cleared active harness since '{name}' was stopped.")
@@ -226,6 +270,7 @@ def main():
     start_parser.add_argument("name", help="Name of the harness")
     start_parser.add_argument("--worktree", action="store_true", help="Use git worktree")
     start_parser.add_argument("--background-cmd", help="Command to run in background")
+    start_parser.add_argument("--agent-type", default="hermes", choices=["hermes", "jcode", "opencode", "antigravity", "custom"], help="The type of agent harness to use")
 
     # Stop command
     stop_parser = subparsers.add_parser("stop", help="Stop a harness")
@@ -251,7 +296,7 @@ def main():
     orchestrator = MultiHarnessOrchestrator()
 
     if args.command == "start":
-        orchestrator.start(args.name, args.worktree, args.background_cmd)
+        orchestrator.start(args.name, args.worktree, args.background_cmd, args.agent_type)
     elif args.command == "stop":
         orchestrator.stop(args.name)
     elif args.command == "switch":

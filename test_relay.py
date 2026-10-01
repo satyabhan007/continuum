@@ -26,16 +26,29 @@ class TestRelay(unittest.TestCase):
         self.assertIn("harness-1", state["harnesses"])
         self.assertEqual(state["harnesses"]["harness-1"]["state"], "running")
         self.assertFalse(state["harnesses"]["harness-1"]["worktree"])
-        self.assertIsNone(state["harnesses"]["harness-1"]["background_cmd"])
+        # With default agent_type="hermes", the command is no longer None
+        self.assertEqual(state["harnesses"]["harness-1"]["background_cmd"], "hermes --continue")
 
     def test_start_harness_with_parameters(self):
-        result = self.orchestrator.start("harness-full", worktree=True, background_cmd="echo hello")
+        result = self.orchestrator.start("harness-full", worktree=True, background_cmd="echo hello", agent_type="jcode")
         self.assertTrue(result)
 
         state = self.orchestrator.get_state()
         self.assertIn("harness-full", state["harnesses"])
         self.assertTrue(state["harnesses"]["harness-full"]["worktree"])
         self.assertEqual(state["harnesses"]["harness-full"]["background_cmd"], "echo hello")
+        self.assertEqual(state["harnesses"]["harness-full"]["agent_type"], "jcode")
+
+    def test_start_harness_default_agent_commands(self):
+        self.orchestrator.start("harness-opencode", agent_type="opencode")
+        self.orchestrator.start("harness-antigravity", agent_type="antigravity")
+
+        state = self.orchestrator.get_state()
+        self.assertEqual(state["harnesses"]["harness-opencode"]["background_cmd"], "opencode run")
+        self.assertEqual(state["harnesses"]["harness-opencode"]["session_name"], "opencode_harness-opencode")
+
+        self.assertEqual(state["harnesses"]["harness-antigravity"]["background_cmd"], "antigravity daemon")
+        self.assertEqual(state["harnesses"]["harness-antigravity"]["session_name"], "antigravity_harness-antigravity")
 
     def test_start_existing_harness(self):
         self.orchestrator.start("harness-1")
