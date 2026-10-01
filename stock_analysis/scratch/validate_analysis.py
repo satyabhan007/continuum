@@ -211,9 +211,36 @@ def main():
         if proc.stdout:
             print(proc.stdout)
     with open("out/report.json") as fh:
-        report = {s["symbol"]: s for s in json.load(fh)["symbols"]}
+        raw = json.load(fh)
+    report = {s["symbol"]: s for s in raw["symbols"]}
+
+    # settings echo must match the constants this validator assumes;
+    # a report generated with different flags must fail loudly here,
+    # not downstream in a confusing metric mismatch.
+    settings = raw.get("settings", {})
+    expected_settings = {
+        "sma_windows": [20, 50, 200],
+        "rsi_period": 14,
+        "macd_fast": 12,
+        "macd_slow": 26,
+        "macd_signal": 9,
+        "bollinger_window": 20,
+        "bollinger_std": 2.0,
+        "atr_period": 14,
+        "risk_free": RISK_FREE,
+        "top": 3,
+        "trading_days_per_year": TRADING_DAYS,
+    }
+    if settings and settings != expected_settings:
+        differing = {k: (settings.get(k), expected_settings[k])
+                     for k in expected_settings
+                     if settings.get(k) != expected_settings[k]}
+        print(f"FAILED: report.json settings differ from validator "
+              f"constants: {differing}")
+        sys.exit(1)
 
     failures = []
+    per_date_rets = {}
 
     def check(sym, name, mine, theirs):
         if mine is None and theirs is None:
@@ -222,7 +249,7 @@ def main():
         if mine is None or theirs is None:
             failures.append(f"{sym}.{name}: mine={mine} theirs={theirs}")
             return
-        if isinstance(mine, str) or isinstance(theirs, str):
+        if isinstance(mine, (str, list)) or isinstance(theirs, (str, list)):
             ok = mine == theirs
         else:
             ok = abs(mine - theirs) <= TOL
@@ -235,7 +262,23 @@ def main():
         dates, closes, highs, lows, _opens, vols = load(sym)
         n = len(closes)
         rets = [closes[i] / closes[i - 1] - 1.0 for i in range(1, n)]
+        per_date_rets[sym] = {dates[i + 1].isoformat(): r for i, r in enumerate(rets)}
         r = report[sym]
+
+        # overview (dates, counts, endpoints)
+        check(sym, "ov_start", dates[0].isoformat(), r["overview"]["start"])
+        check(sym, "ov_end", dates[-1].isoformat(), r["overview"]["end"])
+        check(sym, "ov_days", n, r["overview"]["trading_days"])
+        check(sym, "ov_first", closes[0], r["overview"]["first_close"])
+        check(sym, "ov_last", closes[-1], r["overview"]["last_close"])
+        check(sym, "pr_min", min(closes), r["prices"]["min_close"])
+        check(sym, "pr_min_date",
+              dates[closes.index(min(closes))].isoformat(),
+              r["prices"]["min_date"])
+        check(sym, "pr_max", max(closes), r["prices"]["max_close"])
+        check(sym, "pr_max_date",
+              dates[closes.index(max(closes))].isoformat(),
+              r["prices"]["max_date"])
 
         # returns
         check(sym, "total_return", closes[-1] / closes[0] - 1.0, r["returns"]["total_return"])
@@ -289,6 +332,10 @@ def main():
         _mid, upper, lower = bollinger(closes)
         check(sym, "bb_upper", upper[-1], r["indicators"]["bollinger"]["upper"])
         check(sym, "bb_lower", lower[-1], r["indicators"]["bollinger"]["lower"])
+        check(sym, "bb_mid", _mid[-1], r["indicators"]["bollinger"]["mid"])
+        pct_b = 50.0 if upper[-1] == lower[-1] else \
+            (closes[-1] - lower[-1]) / (upper[-1] - lower[-1]) * 100.0
+        check(sym, "bb_pct_b", pct_b, r["indicators"]["bollinger"]["percent_b"])
         line, sig, hist = macd(closes)
         check(sym, "macd", line[-1], r["indicators"]["macd"]["macd"])
         check(sym, "macd_signal", sig[-1], r["indicators"]["macd"]["signal"])
@@ -298,11 +345,58 @@ def main():
         # signals
         check(sym, "trend", classify_trend(closes[-1], (sma20[-1], sma50[-1], sma200[-1])), r["signals"]["trend"])
 
+        # cross events: sign-change crossings of fast over slow
+        # (analyzer semantics: None points skipped, prev_sign preserved)
+        def crosses(fast_s, slow_s):
+            evs, prev_sign = [], 0
+            for i in range(n):
+                f, s = fast_s[i], slow_s[i]
+                if f is None or s is None:
+                    continue
+                sgn = 1 if f > s else (-1 if f < s else 0)
+                if sgn != 0:
+                    if prev_sign != 0 and sgn != prev_sign:
+                        evs.append((dates[i], "up" if sgn > 0 else "down"))
+                    prev_sign = sgn
+            return evs
+
+        sma_cross = crosses(sma20, sma200)
+        golden = [d for d, k in sma_cross if k == "up"]
+        death = [d for d, k in sma_cross if k == "down"]
+        check(sym, "golden_cross",
+              [d.isoformat() for d in golden[-3:]],
+              r["signals"]["golden_cross"])
+        check(sym, "death_cross",
+              [d.isoformat() for d in death[-3:]],
+              r["signals"]["death_cross"])
+        macd_cross = crosses(line, sig)
+        check(sym, "macd_bullish",
+              [d.isoformat() for d, k in macd_cross[-6:] if k == "up"][-3:],
+              r["signals"]["macd_bullish_cross"])
+        check(sym, "macd_bearish",
+              [d.isoformat() for d, k in macd_cross[-6:] if k == "down"][-3:],
+              r["signals"]["macd_bearish_cross"])
+
         # volume
         check(sym, "total_vol", math.fsum(vols), r["volume"]["total"])
         check(sym, "avg_vol", statistics.fmean(vols), r["volume"]["average"])
+        check(sym, "latest_vol", vols[-1], r["volume"]["latest"])
         check(sym, "max_vol", max(vols), r["volume"]["max"]["volume"])
         check(sym, "rel_latest", vols[-1] / statistics.fmean(vols), r["volume"]["rel_latest"])
+
+    # correlation matrix (top-level comparison section)
+    comp = report.get("comparison", {}).get("correlation", {})
+    if comp:
+        for i, a in enumerate(SYMBOLS):
+            for b in SYMBOLS[i + 1:]:
+                common = sorted(set(per_date_rets[a]) & set(per_date_rets[b]))
+                xs = [per_date_rets[a][d] for d in common]
+                ys = [per_date_rets[b][d] for d in common]
+                try:
+                    corr = statistics.correlation(xs, ys)
+                except statistics.StatisticsError:
+                    corr = None
+                check(a, f"corr|{b}", corr, comp.get(f"{a}|{b}"))
 
     print()
     if failures:
@@ -310,7 +404,9 @@ def main():
         for f in failures:
             print(" ", f)
         sys.exit(1)
-    print("ALL CHECKS PASSED: every major metric for all 5 symbols matches report.json")
+    print("ALL CHECKS PASSED: every metric for all 5 symbols - returns, risk,",
+          "prices, overview, indicators, signals, cross events, volume, and",
+          "the pairwise correlation matrix - matches report.json")
 
 
 if __name__ == "__main__":
