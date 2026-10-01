@@ -107,5 +107,32 @@ class TestRelay(unittest.TestCase):
         self.assertIn("harness-a", harnesses)
         self.assertIn("harness-b", harnesses)
 
+    def test_health_check_stale(self):
+        # Start a harness with a background command (which expects a tmux session)
+        self.orchestrator.start("harness-dead", background_cmd="echo hello")
+        # Ensure it's marked as running
+        self.assertEqual(self.orchestrator.get_state()["harnesses"]["harness-dead"]["state"], "running")
+
+        # Run health check (will fail to find tmux session)
+        stale = self.orchestrator.health_check()
+
+        self.assertIn("harness-dead", stale)
+        self.assertEqual(self.orchestrator.get_state()["harnesses"]["harness-dead"]["state"], "stale")
+
+    def test_update_context_limits(self):
+        self.orchestrator.start("harness-token")
+
+        # Update tokens (below limit)
+        self.orchestrator.update_context("harness-token", 50000)
+        state = self.orchestrator.get_state()
+        self.assertEqual(state["harnesses"]["harness-token"]["tokens_used"], 50000)
+        self.assertEqual(state["harnesses"]["harness-token"]["state"], "running")
+
+        # Update tokens (exceed limit)
+        self.orchestrator.update_context("harness-token", 130000)
+        state = self.orchestrator.get_state()
+        self.assertEqual(state["harnesses"]["harness-token"]["tokens_used"], 130000)
+        self.assertEqual(state["harnesses"]["harness-token"]["state"], "context_exceeded")
+
 if __name__ == "__main__":
     unittest.main()

@@ -89,8 +89,77 @@ class MultiHarnessOrchestrator:
             'state': 'running',
             'worktree': worktree,
             'background_cmd': background_cmd,
-            'started_at': time.time()
+            'started_at': time.time(),
+            'tokens_used': 0,
+            'token_limit': 128000 # Default context limit (e.g., GPT-4o, Claude 3)
         }
+        self.save_state()
+        return True
+
+    @benchmark
+    def health_check(self):
+        """Prunes harnesses that are marked as running but have no active tmux session."""
+        logger.info("Running health check on active harnesses...")
+        stale_harnesses = []
+
+        for name, data in self.harnesses.items():
+            # If a background_cmd was used, we expect a tmux session named hermes_<name> (or similar)
+            if data.get('background_cmd'):
+                try:
+                    # Execute tmux has-session safely without shell=True to avoid injection
+                    # We look for a session containing the name suffix, assuming 'hermes_<name>' or similar logic
+                    # Using the actual session name pattern generated in the bash script
+                    session_name_prefix = "hermes_"
+
+                    # Instead of exact matching the random timestamp, we parse 'tmux ls -F "#{session_name}"'
+                    output = subprocess.check_output(["tmux", "ls", "-F", "#{session_name}"], stderr=subprocess.DEVNULL, text=True)
+
+                    # Exact and safe Python string matching
+                    is_alive = False
+                    for line in output.strip().split('\n'):
+                        if name in line and session_name_prefix in line:
+                            is_alive = True
+                            break
+
+                    if not is_alive:
+                        logger.warning(f"Harness '{name}' appears dead (no tmux session found). Marking stale.")
+                        stale_harnesses.append(name)
+
+                except subprocess.CalledProcessError:
+                    # Tmux server not running or no sessions at all
+                    logger.warning(f"Harness '{name}' appears dead (tmux server off). Marking stale.")
+                    stale_harnesses.append(name)
+
+        for name in stale_harnesses:
+            self.harnesses[name]['state'] = 'stale'
+
+        if stale_harnesses:
+            self.save_state()
+
+        return stale_harnesses
+
+    @benchmark
+    def update_context(self, name, tokens_used):
+        """Updates the token usage for a harness and alerts if it exceeds the limit."""
+        if name not in self.harnesses:
+            logger.warning(f"Harness '{name}' not found.")
+            return False
+
+        try:
+            tokens = int(tokens_used)
+        except ValueError:
+            logger.error("Tokens used must be an integer.")
+            return False
+
+        self.harnesses[name]['tokens_used'] = tokens
+        limit = self.harnesses[name].get('token_limit', 128000)
+
+        if tokens >= limit:
+            logger.error(f"ALERT: Harness '{name}' has exceeded its context window limit ({tokens}/{limit} tokens).")
+            self.harnesses[name]['state'] = 'context_exceeded'
+        elif tokens >= limit * 0.9:
+            logger.warning(f"WARNING: Harness '{name}' is approaching its context window limit ({tokens}/{limit} tokens).")
+
         self.save_state()
         return True
 
@@ -170,6 +239,14 @@ def main():
     # List command
     subparsers.add_parser("list", help="List all harnesses")
 
+    # Health check command
+    subparsers.add_parser("health", help="Run a health check on active harnesses")
+
+    # Update context command
+    context_parser = subparsers.add_parser("update-context", help="Update token usage for a harness")
+    context_parser.add_argument("name", help="Name of the harness")
+    context_parser.add_argument("tokens", help="Number of tokens used")
+
     args = parser.parse_args()
     orchestrator = MultiHarnessOrchestrator()
 
@@ -181,6 +258,10 @@ def main():
         orchestrator.switch(args.name, args.snapshot)
     elif args.command == "list":
         orchestrator.list_harnesses()
+    elif args.command == "health":
+        orchestrator.health_check()
+    elif args.command == "update-context":
+        orchestrator.update_context(args.name, args.tokens)
     else:
         parser.print_help()
 
