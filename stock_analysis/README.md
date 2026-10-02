@@ -105,7 +105,7 @@ features work fully offline from local CSV files; the optional fetch path
 needs the third-party `requests` package only.
 
 A written-up analysis of the five bundled sample datasets (rankings, risk
-profile, and cross-checks) lives in [`out/ANALYSIS.md`](out/ANALYSIS.md).
+profile, and cross-checks) lives in [`ANALYSIS.md`](ANALYSIS.md).
 
 ## Design notes
 
