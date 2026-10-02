@@ -177,10 +177,10 @@ The system uses `multi_harness_config.json` (repo root) for configuration. Key s
 ### Running Tests
 
 ```bash
-# Full 6-layer offline validation stack in one command (relay suite,
+# Full 7-layer offline validation stack in one command (relay suite,
 # retry reference, adversarial contract, both claims validators, stock
-# validator with self-heal). This is what a fresh clone can verify -
-# no real agents, no token spend, no untracked files required.
+# validator with self-heal, analyzer unit tests). This is what a fresh
+# clone can verify - no real agents, no token spend, no untracked files.
 python3 scratch/verify_fresh_clone.py
 
 # Relay logic suite (simulated harnesses, no real agents, no token spend)

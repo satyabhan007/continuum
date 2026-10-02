@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fresh-clone verification driver: runs the full 6-layer validation stack.
+"""Fresh-clone verification driver: runs the full 7-layer validation stack.
 
 Reproduces, in one command, the exact evidence chain a fresh clone of the
 repository can verify offline (no live LLM, no real tokens):
@@ -20,7 +20,7 @@ Live-token tests (test_relay_live.py, test_relay_real.py) are deliberately
 NOT run.
 
 Usage: python3 scratch/verify_fresh_clone.py   (from the repo root)
-Exit: 0 only if all six layers pass.
+Exit: 0 only if all seven layers pass.
 """
 import os
 import subprocess
@@ -39,6 +39,8 @@ LAYERS = [
      [sys.executable, "scratch/validate_doc_claims_run1790774818.py"]),
     ("L6 stock validator (self-heals report.json)", "stock_analysis",
      [sys.executable, "scratch/validate_analysis.py"]),
+    ("L7 analyzer unit tests (70 tests)", "stock_analysis",
+     [sys.executable, "-m", "unittest", "test_stock_analyzer"]),
 ]
 
 
@@ -73,7 +75,7 @@ def main():
         print(f"FRESH-CLONE VERIFICATION FAILED: {len(failed)} layer(s): "
               + ", ".join(failed))
         sys.exit(1)
-    print("FRESH-CLONE VERIFICATION PASSED: all 6 layers green "
+    print("FRESH-CLONE VERIFICATION PASSED: all 7 layers green "
           "(exit=0 each).")
     sys.exit(0)
 
