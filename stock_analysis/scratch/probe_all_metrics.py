@@ -8,7 +8,9 @@ FAIL. Run from stock_analysis/: python3 scratch/probe_all_metrics.py
 import csv
 import json
 import math
+import os
 import statistics
+import subprocess
 import sys
 from datetime import date
 
@@ -187,6 +189,18 @@ def load(sym):
 
 
 def main():
+    if not os.path.isfile("out/report.json"):
+        print("[self-heal] out/report.json missing - generating with "
+              "stock_analyzer.py from the sample CSVs")
+        os.makedirs("out", exist_ok=True)
+        cmd = [sys.executable, "stock_analyzer.py",
+               *[f"{s}.csv" for s in SYMBOLS],
+               "--risk-free", str(RISK_FREE),
+               "--json", "out/report.json", "--csv", "out/metrics.csv",
+               "--export-series", "out/series.csv"]
+        proc = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        if proc.stdout:
+            print(proc.stdout)
     with open("out/report.json") as fh:
         rep = json.load(fh)
     report = {s["symbol"]: s for s in rep["symbols"]}
