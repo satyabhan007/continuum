@@ -164,6 +164,14 @@ class MultiHarnessOrchestrator:
         for name in stale_harnesses:
             self.harnesses[name]['state'] = 'stale'
 
+        # Optional: Run the LangGraph synchronization pipeline
+        try:
+            from workflow_graph import run_orchestrator_graph
+            new_state = run_orchestrator_graph(self.get_state())
+            self.harnesses = new_state.get("harnesses", self.harnesses)
+        except ImportError as e:
+            logger.debug(f"LangGraph not integrated: {e}")
+
         if stale_harnesses:
             self.save_state()
 
