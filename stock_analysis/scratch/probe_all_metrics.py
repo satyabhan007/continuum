@@ -20,6 +20,8 @@ SYMBOLS = ["AAPL", "MSFT", "NVDA", "GME", "KO"]
 TOP = 3          # analyzer default --top 3
 TOL = 1e-6      # JSON floats rounded to 6 decimals
 SMA_WINDOWS = (20, 50, 200)
+RSI_PERIOD = 14
+ATR_PERIOD = 14
 MACD_FAST, MACD_SLOW, MACD_SIGNAL = 12, 26, 9
 BB_WINDOW, BB_STD = 20, 2.0
 
@@ -223,6 +225,34 @@ def main():
         print(f"FAILED: cannot read out/report.json ({exc}). Delete it "
               "to trigger self-heal, or regenerate with stock_analyzer.py")
         sys.exit(1)
+
+    # Settings echo must match the constants this probe assumes;
+    # a report generated with different flags must fail loudly here
+    # (parity with the validator's guard) - not downstream in a
+    # confusing metric mismatch, and never a silent 90/90 PASS on a
+    # wrong-settings report.
+    settings = rep.get("settings", {})
+    expected_settings = {
+        "sma_windows": list(SMA_WINDOWS),
+        "rsi_period": RSI_PERIOD,
+        "macd_fast": MACD_FAST,
+        "macd_slow": MACD_SLOW,
+        "macd_signal": MACD_SIGNAL,
+        "bollinger_window": BB_WINDOW,
+        "bollinger_std": BB_STD,
+        "atr_period": ATR_PERIOD,
+        "risk_free": RISK_FREE,
+        "top": TOP,
+        "trading_days_per_year": TRADING_DAYS,
+    }
+    if settings and settings != expected_settings:
+        differing = {k: (settings.get(k), expected_settings[k])
+                     for k in expected_settings
+                     if settings.get(k) != expected_settings[k]}
+        print(f"FAILED: report.json settings differ from probe constants: "
+              f"{differing}")
+        sys.exit(1)
+
     report = {s["symbol"]: s for s in rep["symbols"]}
     per_date_rets = {}
     for sym in SYMBOLS:
