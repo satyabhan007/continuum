@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Second-opinion validator: recompute all major metrics from raw CSVs.
 
 Independent of the analyzer module: no imports from stock_analyzer. The
