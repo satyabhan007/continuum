@@ -13,6 +13,18 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 STATE_FILE = "orchestrator.db" # Changed to .db to reflect SQLite persistence
 LOG_FILE = "orchestrator.log"
 
+# Known AI Model Context Limits
+KNOWN_MODEL_LIMITS = {
+    "gpt-4o": 128000,
+    "gpt-4-turbo": 128000,
+    "claude-3-5-sonnet": 200000,
+    "claude-3-opus": 200000,
+    "gemini-1.5-pro": 2000000,
+    "gemini-1.5-flash": 1000000,
+    "llama-3-70b": 128000,
+    "default": 128000
+}
+
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
@@ -108,12 +120,15 @@ class MultiHarnessOrchestrator:
         logger.debug(f"Saved state to SQLite checkpointer: {self.state_file}")
 
     @benchmark
-    def start(self, name, worktree=False, background_cmd=None, agent_type="hermes"):
+    def start(self, name, worktree=False, background_cmd=None, agent_type="hermes", model_name="default"):
         if name in self.harnesses:
             logger.warning(f"Harness '{name}' is already running.")
             return False
 
-        logger.info(f"Starting harness '{name}' using agent type: {agent_type}")
+        # Auto-configure token limit based on known models
+        token_limit = KNOWN_MODEL_LIMITS.get(model_name, KNOWN_MODEL_LIMITS["default"])
+
+        logger.info(f"Starting harness '{name}' (Agent: {agent_type}, Model: {model_name}, Limit: {token_limit})")
 
         # Determine the launch command based on agent type
         cmd = background_cmd
@@ -149,12 +164,13 @@ class MultiHarnessOrchestrator:
         self.harnesses[name] = {
             'state': 'running',
             'agent_type': agent_type,
+            'model_name': model_name,
             'worktree': worktree,
             'background_cmd': cmd,
             'session_name': session_name,
             'started_at': time.time(),
             'tokens_used': 0,
-            'token_limit': 128000 # Default context limit
+            'token_limit': token_limit
         }
         self.save_state()
         return True
@@ -313,6 +329,7 @@ def main():
     start_parser.add_argument("--worktree", action="store_true", help="Use git worktree")
     start_parser.add_argument("--background-cmd", help="Command to run in background")
     start_parser.add_argument("--agent-type", default="hermes", choices=["hermes", "jcode", "opencode", "antigravity", "custom"], help="The type of agent harness to use")
+    start_parser.add_argument("--model", default="default", help="The AI model driving the agent (auto-configures token limits)")
 
     # Stop command
     stop_parser = subparsers.add_parser("stop", help="Stop a harness")
@@ -338,7 +355,7 @@ def main():
     orchestrator = MultiHarnessOrchestrator()
 
     if args.command == "start":
-        orchestrator.start(args.name, args.worktree, args.background_cmd, args.agent_type)
+        orchestrator.start(args.name, args.worktree, args.background_cmd, args.agent_type, args.model)
     elif args.command == "stop":
         orchestrator.stop(args.name)
     elif args.command == "switch":

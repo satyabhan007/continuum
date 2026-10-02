@@ -41,14 +41,15 @@ def start_harness():
     data = request.json
     name = data.get("name")
     agent_type = data.get("agent_type", "hermes")
+    model_name = data.get("model_name", "default")
 
     if not name:
         return jsonify({"error": "Missing harness name"}), 400
 
     orchestrator.load_state()
-    success = orchestrator.start(name, agent_type=agent_type)
+    success = orchestrator.start(name, agent_type=agent_type, model_name=model_name)
     if success:
-        return jsonify({"status": "success", "message": f"Started {name} as {agent_type}"})
+        return jsonify({"status": "success", "message": f"Started {name} as {agent_type} using {model_name}"})
     return jsonify({"error": "Failed to start harness or already exists"}), 500
 
 # --- Frontend Visual Dashboard ---
@@ -247,12 +248,19 @@ HTML_TEMPLATE = """
     </div>
 
     <div class="form-group">
-        <input type="text" id="newName" placeholder="Node Name" />
+        <input type="text" id="newName" placeholder="Node ID" />
         <select id="newType">
-            <option value="hermes">Model: Hermes</option>
-            <option value="jcode">Model: JCode</option>
-            <option value="opencode">Model: OpenCode</option>
-            <option value="antigravity">Model: Antigravity</option>
+            <option value="hermes">Agent: Hermes</option>
+            <option value="jcode">Agent: JCode</option>
+            <option value="opencode">Agent: OpenCode</option>
+            <option value="antigravity">Agent: Antigravity</option>
+        </select>
+        <select id="newModel">
+            <option value="gpt-4o">Model: GPT-4o (128k)</option>
+            <option value="claude-3-5-sonnet">Model: Claude 3.5 Sonnet (200k)</option>
+            <option value="gemini-1.5-pro">Model: Gemini 1.5 Pro (2M)</option>
+            <option value="gemini-1.5-flash">Model: Gemini 1.5 Flash (1M)</option>
+            <option value="llama-3-70b">Model: Llama 3 70B (128k)</option>
         </select>
         <button onclick="startHarness()" style="background: #fff; color: #000; border: none; font-weight: 600;">Initialize Node</button>
     </div>
@@ -288,12 +296,13 @@ HTML_TEMPLATE = """
         async function startHarness() {
             const name = document.getElementById('newName').value;
             const type = document.getElementById('newType').value;
+            const model = document.getElementById('newModel').value;
             if (!name) return alert("Please provide a name.");
 
             await fetch('/api/start', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ name, agent_type: type })
+                body: JSON.stringify({ name, agent_type: type, model_name: model })
             });
             document.getElementById('newName').value = "";
             fetchState();
@@ -338,8 +347,11 @@ HTML_TEMPLATE = """
 
                     <div class="details">
                         <h3>${name} ${isActiveMark}</h3>
-                        <p><span class="badge">${data.agent_type || 'hermes'}</span></p>
-                        <p style="color: ${isRunning ? '#10a37f' : '#f44336'};">${data.state.charAt(0).toUpperCase() + data.state.slice(1)}</p>
+                        <p>
+                            <span class="badge" style="margin-right: 4px;">${data.agent_type || 'hermes'}</span>
+                            <span class="badge">${data.model_name || 'gpt-4o'}</span>
+                        </p>
+                        <p style="color: ${isRunning ? '#10a37f' : '#f44336'}; margin-top: 10px;">${data.state.charAt(0).toUpperCase() + data.state.slice(1)}</p>
 
                         <div style="margin-top: 15px; margin-bottom: 20px;">
                             <div style="display:flex; justify-content:space-between; font-size:11px; color:#666;">
