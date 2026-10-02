@@ -30,3 +30,6 @@ from multi_harness_orchestrator import Orchestrator
 
 # Example usage goes here
 ```
+
+### Requirements
+Python 3.10+ is required due to modern type hinting used in the LangGraph integration (`workflow_graph.py`).

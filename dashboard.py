@@ -59,223 +59,206 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Galactic Agent Command</title>
+    <title>Continuum AI Agents</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
+        /* Minimalist, OpenAI-inspired aesthetic */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
 
         body {
-            font-family: 'Orbitron', sans-serif;
-            background: #000;
+            font-family: 'Inter', sans-serif;
+            background-color: #0F0F0F; /* Sleek dark background */
             margin: 0;
-            padding: 20px;
-            color: #4df;
+            padding: 40px 20px;
+            color: #ECECEC;
             min-height: 100vh;
-            overflow-x: hidden;
-            perspective: 1000px; /* 3D depth */
-        }
-
-        /* Dynamic Starfield & Nebula */
-        body::before {
-            content: "";
-            position: fixed;
-            top: 0; left: 0; width: 200vw; height: 200vh;
-            background:
-                radial-gradient(circle at 20% 30%, rgba(138, 43, 226, 0.15) 0%, transparent 40%),
-                radial-gradient(circle at 80% 70%, rgba(68, 221, 255, 0.1) 0%, transparent 40%),
-                radial-gradient(1px 1px at 20px 30px, #fff, rgba(0,0,0,0)),
-                radial-gradient(2px 2px at 40px 70px, #fff, rgba(0,0,0,0)),
-                radial-gradient(1px 1px at 50px 160px, #fff, rgba(0,0,0,0));
-            background-size: 100% 100%, 100% 100%, 200px 200px, 300px 300px, 150px 150px;
-            z-index: -1;
-            animation: drift 100s linear infinite;
-        }
-
-        @keyframes drift { 0% { transform: translate(0, 0); } 100% { transform: translate(-10vw, -10vh); } }
-
-        h1 {
-            color: #ffe81f; /* Star Wars Yellow */
-            text-align: center;
-            text-transform: uppercase;
-            letter-spacing: 5px;
-            text-shadow: 0 0 20px rgba(255, 232, 31, 0.8);
-            margin-bottom: 40px;
-            animation: pulse-glow 3s infinite alternate;
-        }
-        @keyframes pulse-glow { from { text-shadow: 0 0 10px rgba(255,232,31,0.5); } to { text-shadow: 0 0 30px rgba(255,232,31,1); } }
-
-        .controls { display: flex; justify-content: center; gap: 20px; margin-bottom: 30px; position: relative; z-index: 10; }
-
-        button {
-            padding: 12px 25px;
-            background: rgba(0, 150, 255, 0.15);
-            color: #4df;
-            border: 1px solid #4df;
-            border-radius: 8px;
-            cursor: pointer;
-            font-family: 'Orbitron', sans-serif;
-            font-size: 14px;
-            font-weight: bold;
-            text-transform: uppercase;
-            box-shadow: 0 0 10px rgba(68, 221, 255, 0.4);
-            transition: all 0.2s ease-in-out;
-            backdrop-filter: blur(4px);
-        }
-        button:hover {
-            background: rgba(0, 150, 255, 0.4);
-            box-shadow: 0 0 20px rgba(68, 221, 255, 0.8);
-            transform: translateY(-2px) scale(1.05);
-        }
-        .btn-health { border-color: #28a745; color: #28a745; box-shadow: 0 0 10px rgba(40, 167, 69, 0.4); }
-        .btn-health:hover { background: rgba(40, 167, 69, 0.3); box-shadow: 0 0 20px rgba(40, 167, 69, 0.8); }
-
-        .btn-danger { border-color: #ff3366; color: #ff3366; box-shadow: 0 0 10px rgba(255, 51, 102, 0.4); background: rgba(255,51,102,0.1); }
-        .btn-danger:hover { background: rgba(255, 51, 102, 0.3); box-shadow: 0 0 25px rgba(255, 51, 102, 0.9); }
-
-        /* 3D Grid container */
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-            gap: 40px;
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 40px 0;
-            transform-style: preserve-3d;
-        }
-
-        /* Holographic Galaxy Cards */
-        .card {
-            background: rgba(5, 10, 20, 0.6);
-            border-radius: 50%;
-            padding: 50px;
-            aspect-ratio: 1 / 1;
             display: flex;
             flex-direction: column;
+            align-items: center;
+        }
+
+        h1 {
+            color: #FFFFFF;
+            font-weight: 500;
+            font-size: 1.8rem;
+            letter-spacing: -0.02em;
+            margin-bottom: 50px;
+            opacity: 0.9;
+        }
+
+        .controls { display: flex; justify-content: center; gap: 12px; margin-bottom: 30px; position: relative; z-index: 10; width: 100%; max-width: 800px; }
+
+        button {
+            padding: 10px 18px;
+            background: rgba(255, 255, 255, 0.08);
+            color: #ECECEC;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: 'Inter', sans-serif;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            backdrop-filter: blur(10px);
+        }
+        button:hover {
+            background: rgba(255, 255, 255, 0.15);
+            border-color: rgba(255, 255, 255, 0.2);
+            transform: scale(1.02);
+        }
+        .btn-health { color: #10a37f; border-color: rgba(16, 163, 127, 0.3); } /* OpenAI Green */
+        .btn-health:hover { background: rgba(16, 163, 127, 0.1); border-color: rgba(16, 163, 127, 0.5); }
+
+        .btn-danger { color: #f44336; border-color: rgba(244, 67, 54, 0.3); background: transparent; }
+        .btn-danger:hover { background: rgba(244, 67, 54, 0.1); border-color: rgba(244, 67, 54, 0.5); }
+
+        .grid {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 60px;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 0;
+        }
+
+        /* The "OpenAI Dot" Agent Representation */
+        .card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 200px;
+            position: relative;
+        }
+
+        .dot-container {
+            position: relative;
+            width: 120px;
+            height: 120px;
+            display: flex;
             justify-content: center;
             align-items: center;
-            text-align: center;
-            border: 2px solid rgba(255,255,255,0.1);
-            box-shadow: inset 0 0 50px rgba(0,0,0,0.8), 0 0 20px rgba(0,0,0,0.5);
-            position: relative;
-            overflow: visible; /* Let holograms bleed out */
-            backdrop-filter: blur(10px);
-            transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            animation: float 6s ease-in-out infinite;
+            margin-bottom: 25px;
         }
 
-        .card:hover {
-            transform: translateZ(50px) scale(1.05);
-            z-index: 100;
-        }
-
-        /* Surreal Galaxy Swirl */
-        .card::before {
-            content: '';
-            position: absolute;
-            top: -20%; left: -20%; width: 140%; height: 140%;
+        /* The core dot */
+        .dot {
+            width: 40px;
+            height: 40px;
             border-radius: 50%;
-            background: conic-gradient(from 0deg, transparent, rgba(68,221,255,0.3) 20%, transparent 40%, rgba(138,43,226,0.3) 60%, transparent 80%);
-            animation: rotate 15s linear infinite;
-            z-index: -1;
-            filter: blur(15px);
-        }
-
-        /* LangGraph Data Streams (Particles connecting logic) */
-        .card::after {
-            content: '';
+            background: #fff;
             position: absolute;
-            top: 50%; left: 50%; width: 100%; height: 100%;
-            border: 1px dashed rgba(255,255,255,0.1);
-            border-radius: 50%;
-            transform: translate(-50%, -50%);
-            animation: rotate 20s linear infinite reverse;
-            pointer-events: none;
-        }
-
-        @keyframes float { 0% { transform: translateY(0px) rotateX(0deg); } 50% { transform: translateY(-15px) rotateX(5deg); } 100% { transform: translateY(0px) rotateX(0deg); } }
-        @keyframes rotate { 100% { transform: translate(-50%, -50%) rotate(360deg); } }
-
-        /* Status Colors */
-        .state-running { border-color: rgba(0,255,136,0.5); box-shadow: 0 0 30px rgba(0,255,136,0.3); }
-        .state-running::before { background: conic-gradient(from 0deg, transparent, rgba(0,255,136,0.3) 20%, transparent 40%); }
-
-        .state-stale { border-color: #ff3366; box-shadow: 0 0 30px rgba(255,51,102,0.4); animation: pulse-red 2s infinite; }
-        .state-stale::before { animation-play-state: paused; background: radial-gradient(circle, rgba(255,51,102,0.2) 0%, transparent 70%); filter: blur(5px); }
-
-        .state-context_exceeded { border-color: #ffcc00; box-shadow: 0 0 30px rgba(255,204,0,0.4); }
-        .state-context_exceeded::before { background: conic-gradient(from 0deg, transparent, rgba(255,204,0,0.4) 20%, transparent 40%); }
-
-        @keyframes pulse-red { 0% { box-shadow: 0 0 20px rgba(255,51,102,0.3); } 50% { box-shadow: 0 0 50px rgba(255,51,102,0.7); } 100% { box-shadow: 0 0 20px rgba(255,51,102,0.3); } }
-
-        .card h3 {
-            margin: 0 0 20px 0;
-            color: #fff;
-            text-transform: uppercase;
-            letter-spacing: 3px;
-            font-size: 1.4rem;
             z-index: 2;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+            transition: all 0.5s ease-in-out;
+            box-shadow: 0 0 20px rgba(255,255,255,0.2);
+        }
+
+        /* The breathing aura (morphing circles behind the dot) */
+        .aura {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%;
+            background: rgba(255, 255, 255, 0.05);
+            animation: morph 8s ease-in-out infinite;
+            z-index: 1;
+            filter: blur(8px);
+        }
+        .aura:nth-child(2) { animation-direction: reverse; animation-duration: 10s; background: rgba(255, 255, 255, 0.03); }
+
+        @keyframes morph {
+            0%, 100% { border-radius: 40% 60% 70% 30% / 40% 40% 60% 50%; transform: scale(1) rotate(0deg); }
+            34% { border-radius: 70% 30% 50% 50% / 30% 30% 70% 70%; transform: scale(1.05) rotate(120deg); }
+            67% { border-radius: 100% 60% 60% 100% / 100% 100% 60% 60%; transform: scale(0.95) rotate(240deg); }
+        }
+
+        /* State specific pulsing */
+        .state-running .dot { animation: breathe 3s ease-in-out infinite alternate; background: #fff; }
+        .state-running .aura { background: rgba(255,255,255,0.08); }
+
+        .state-stale .dot { background: #f44336; box-shadow: 0 0 15px rgba(244,67,54,0.5); opacity: 0.5; animation: none; transform: scale(0.8); }
+        .state-stale .aura { animation: none; background: rgba(244,67,54,0.05); border-radius: 50%; }
+
+        .state-context_exceeded .dot { background: #ff9800; animation: jitter 0.5s ease-in-out infinite; }
+        .state-context_exceeded .aura { background: rgba(255,152,0,0.1); animation-duration: 2s; }
+
+        @keyframes breathe { 0% { transform: scale(0.9); box-shadow: 0 0 10px rgba(255,255,255,0.1); } 100% { transform: scale(1.1); box-shadow: 0 0 25px rgba(255,255,255,0.4); } }
+        @keyframes jitter { 0%, 100% { transform: translate(0,0) scale(1); } 25% { transform: translate(1px, -1px) scale(1.02); } 50% { transform: translate(-1px, 1px) scale(0.98); } 75% { transform: translate(1px, 1px) scale(1.01); } }
+
+        /* Typography and Details */
+        .card h3 {
+            margin: 0 0 8px 0;
+            color: #fff;
+            font-weight: 500;
+            font-size: 1.1rem;
+            text-align: center;
         }
 
         .badge {
             font-size: 10px;
-            padding: 4px 8px;
-            border-radius: 4px;
+            padding: 3px 8px;
+            border-radius: 12px;
             background: rgba(255,255,255,0.1);
-            border: 1px solid rgba(255,255,255,0.3);
+            color: #bbb;
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 0.5px;
+            font-weight: 600;
         }
 
+        /* Minimalist Progress Bar */
         .progress-bg {
-            background: rgba(0,0,0,0.5);
-            border: 1px solid #4df;
-            border-radius: 2px;
-            height: 6px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+            height: 4px;
             width: 100%;
-            margin-top: 5px;
+            margin-top: 8px;
             overflow: hidden;
         }
-        .progress-fill { background: #4df; height: 100%; width: 0%; transition: width 0.3s; box-shadow: 0 0 5px #4df; }
-        .progress-warning { background: #ffc107; box-shadow: 0 0 5px #ffc107; border-color: #ffc107; }
-        .progress-danger { background: #dc3545; box-shadow: 0 0 5px #dc3545; border-color: #dc3545; }
+        .progress-fill { background: #fff; height: 100%; width: 0%; transition: width 0.4s ease; opacity: 0.8; }
+        .progress-warning { background: #ff9800; opacity: 1; }
+        .progress-danger { background: #f44336; opacity: 1; }
 
-        .details { z-index: 1; width: 80%; }
-        .details p { margin: 8px 0; font-size: 12px; color: #aaa; }
-        .details strong { color: #fff; }
+        .details { width: 100%; text-align: center; }
+        .details p { margin: 6px 0; font-size: 12px; color: #888; }
 
-        .form-group { display: flex; gap: 10px; margin-bottom: 40px; justify-content: center; }
+        /* Input Forms */
+        .form-group { display: flex; gap: 12px; margin-bottom: 50px; justify-content: center; width: 100%; max-width: 800px; }
         select, input {
-            padding: 10px;
-            background: rgba(0,0,0,0.5);
-            color: #4df;
-            border: 1px solid #4df;
-            border-radius: 4px;
-            font-family: 'Orbitron', sans-serif;
+            padding: 12px 16px;
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+            transition: all 0.2s ease;
         }
-        select:focus, input:focus { outline: none; box-shadow: 0 0 10px rgba(68, 221, 255, 0.5); }
+        select:focus, input:focus { outline: none; border-color: rgba(255,255,255,0.3); background: rgba(255,255,255,0.08); }
+
+        /* Clean tooltip for extra info instead of cluttered text */
+        .info-hover { cursor: help; color: #666; border-bottom: 1px dotted #666; }
     </style>
 </head>
 <body>
-    <h1>Galactic Agent Command</h1>
+    <h1>Continuum AI Agents</h1>
 
     <div class="controls">
-        <button onclick="fetchState()">Refresh Sector</button>
-        <button class="btn-health" onclick="runHealthCheck()">Sensor Scan (Health)</button>
+        <button onclick="fetchState()">Refresh State</button>
+        <button class="btn-health" onclick="runHealthCheck()">Sync LangGraph Nodes</button>
     </div>
 
     <div class="form-group">
-        <input type="text" id="newName" placeholder="New Node ID" />
+        <input type="text" id="newName" placeholder="Node Name" />
         <select id="newType">
-            <option value="hermes">LangGraph Node: Hermes</option>
-            <option value="jcode">LangGraph Node: JCode</option>
-            <option value="opencode">LangGraph Node: OpenCode</option>
-            <option value="antigravity">LangGraph Node: Antigravity</option>
+            <option value="hermes">Model: Hermes</option>
+            <option value="jcode">Model: JCode</option>
+            <option value="opencode">Model: OpenCode</option>
+            <option value="antigravity">Model: Antigravity</option>
         </select>
-        <button onclick="startHarness()" style="box-shadow: 0 0 15px rgba(138,43,226,0.6); border-color: #8a2be2; color: #d4a5ff;">Initialize Graph Node</button>
+        <button onclick="startHarness()" style="background: #fff; color: #000; border: none; font-weight: 600;">Initialize Node</button>
     </div>
 
     <div class="grid" id="harnessGrid">
-        <!-- Galaxies will be injected here via JS -->
+        <!-- Agent Dots will be injected here via JS -->
     </div>
 
     <script>
@@ -338,32 +321,37 @@ HTML_TEMPLATE = """
                 if (pct > 90) pClass = 'progress-danger';
                 else if (pct > 75) pClass = 'progress-warning';
 
-                const isActiveMark = name === active ? '<br><span class="badge" style="background:#ffe81f; color:#000; border:none; margin-top:8px; display:inline-block; box-shadow:0 0 10px #ffe81f;">ACTIVE SUB-GRAPH</span>' : '';
+                const isActiveMark = name === active ? '<span class="badge" style="background:#fff; color:#000; margin-left:8px;">ACTIVE</span>' : '';
 
                 const card = document.createElement('div');
                 card.className = `card state-${data.state}`;
-                // Delay animation slightly for each card to make it look organic
-                card.style.animationDelay = `${Math.random() * 2}s`;
+
+                // Randomize aura animations slightly for organic feel
+                const animDelay = Math.random() * -5;
 
                 card.innerHTML = `
-                    <h3>${name} ${isActiveMark}</h3>
-                    <div class="details">
-                        <p><strong>Node Class:</strong> <span class="badge">${data.agent_type || 'hermes'}</span></p>
-                        <p><strong>LangGraph State:</strong> <span style="color:${isRunning ? '#0f0' : '#f00'}">${data.state.toUpperCase()}</span></p>
-                        <p><strong>Executor:</strong> <code style="color:#0f0;">> ${data.background_cmd || 'N/A'}</code></p>
+                    <div class="dot-container">
+                        <div class="aura" style="animation-delay: ${animDelay}s"></div>
+                        <div class="aura" style="animation-delay: ${animDelay - 2}s"></div>
+                        <div class="dot"></div>
+                    </div>
 
-                        <div style="margin-top: 25px;">
-                            <div style="display:flex; justify-content:space-between; font-size:11px; color:#4df; text-transform:uppercase; margin-bottom: 5px;">
-                                <span>Context Window:</span>
-                                <span>${tokens.toLocaleString()} / ${limit.toLocaleString()}</span>
+                    <div class="details">
+                        <h3>${name} ${isActiveMark}</h3>
+                        <p><span class="badge">${data.agent_type || 'hermes'}</span></p>
+                        <p style="color: ${isRunning ? '#10a37f' : '#f44336'};">${data.state.charAt(0).toUpperCase() + data.state.slice(1)}</p>
+
+                        <div style="margin-top: 15px; margin-bottom: 20px;">
+                            <div style="display:flex; justify-content:space-between; font-size:11px; color:#666;">
+                                <span>Context Limit</span>
+                                <span>${Math.round(pct)}%</span>
                             </div>
                             <div class="progress-bg">
                                 <div class="progress-fill ${pClass}" style="width: ${pct}%"></div>
                             </div>
                         </div>
-                    </div>
-                    <div style="margin-top: 30px; z-index: 2;">
-                        <button class="btn-danger" onclick="stopHarness('${name}')">Sever Node</button>
+
+                        <button class="btn-danger" onclick="stopHarness('${name}')" style="font-size:11px; padding: 6px 12px;">Stop Node</button>
                     </div>
                 `;
                 grid.appendChild(card);
