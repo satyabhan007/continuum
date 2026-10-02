@@ -215,11 +215,24 @@ def main():
                "--risk-free", str(RISK_FREE),
                "--json", "out/report.json", "--csv", "out/metrics.csv",
                "--export-series", "out/series.csv"]
-        proc = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        try:
+            proc = subprocess.run(cmd, check=True, capture_output=True,
+                                  text=True)
+        except subprocess.CalledProcessError as exc:
+            print(f"FAILED: self-heal regeneration failed "
+                  f"(analyzer exit {exc.returncode})")
+            if exc.stderr:
+                print(exc.stderr.strip(), file=sys.stderr)
+            sys.exit(1)
         if proc.stdout:
             print(proc.stdout)
-    with open("out/report.json") as fh:
-        raw = json.load(fh)
+    try:
+        with open("out/report.json") as fh:
+            raw = json.load(fh)
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"FAILED: cannot read out/report.json ({exc}). Delete it "
+              "to trigger self-heal, or regenerate with stock_analyzer.py")
+        sys.exit(1)
     report = {s["symbol"]: s for s in raw["symbols"]}
 
     # settings echo must match the constants this validator assumes;
