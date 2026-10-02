@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
-"""One-off probe: test EVERY metric in out/report.json, not just 'major' ones.
+"""Complementary probe: test the 90 report.json fields the 280-check
+validator does not cover (overview dates, price extremes + dates,
+Bollinger mid/%B, latest volume, golden/death/MACD cross events,
+pairwise correlations).
 
-Independent reimplementation from the documented definitions (README +
-stock_analyzer.py docstrings). Prints PASS/FAIL per metric; exit 1 on any
-FAIL. Run from stock_analysis/: python3 scratch/probe_all_metrics.py
+Together the two tools cover all 280 fields; run both - the probe
+alone does NOT verify risk/returns/indicator metrics. Independent
+reimplementation from the documented definitions (README +
+stock_analyzer.py docstrings). Prints PASS/FAIL per metric; exit 1 on
+any FAIL. Run from any cwd: scratch/probe_all_metrics.py
 """
 import csv
 import json
@@ -333,7 +338,9 @@ def main():
         for f in fails:
             print(" ", f)
         sys.exit(1)
-    print("ALL METRICS PASS: every field in report.json verified for all 5 symbols")
+    print("ALL PROBE METRICS PASS: the 90 fields the validator does not "
+          "cover are verified for all 5 symbols (run the validator too - "
+          "the pair covers all 280 fields)")
 
 
 if __name__ == "__main__":
