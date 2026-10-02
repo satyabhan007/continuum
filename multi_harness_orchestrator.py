@@ -7,8 +7,10 @@ import time
 import logging
 import psutil
 from functools import wraps
+import sqlite3
+from langgraph.checkpoint.sqlite import SqliteSaver
 
-STATE_FILE = ".harness_state.json"
+STATE_FILE = "orchestrator.db" # Changed to .db to reflect SQLite persistence
 LOG_FILE = "orchestrator.log"
 
 # Setup logging
@@ -52,31 +54,58 @@ class MultiHarnessOrchestrator:
         self.state_file = state_file
         self.harnesses = {}
         self.active_harness = None
-        self.load_state()
+
+        # The thread ID we use to track the global state in SQLite
+        self.config = {"configurable": {"thread_id": "global_orchestrator"}}
+
+        # Initialize SQLite Connection and LangGraph App
+        try:
+            self.conn = sqlite3.connect(self.state_file, check_same_thread=False)
+            self.checkpointer = SqliteSaver(self.conn)
+            self.checkpointer.setup() # CRITICAL: Ensure SQLite tables exist before compiling
+
+            from workflow_graph import get_workflow
+            self.graph_app = get_workflow().compile(checkpointer=self.checkpointer)
+            self.load_state()
+        except sqlite3.DatabaseError as e:
+            logger.error(f"Corrupted or invalid database detected at {self.state_file}: {e}")
+            logger.warning("Initializing with empty memory state and continuing.")
+            self.graph_app = None
+            self.conn = None
+            self.checkpointer = None
+        except ImportError as e:
+            logger.error(f"Failed to import LangGraph workflow: {e}")
+            self.graph_app = None
+            self.conn = None
+            self.checkpointer = None
 
     def load_state(self):
-        if os.path.exists(self.state_file):
-            try:
-                with open(self.state_file, "r") as f:
-                    state = json.load(f)
-                    self.harnesses = state.get("harnesses", {})
-                    self.active_harness = state.get("active_harness")
-                logger.debug(f"Loaded state from {self.state_file}")
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse state file {self.state_file}: {e}")
-            except Exception as e:
-                logger.error(f"Unexpected error reading state file {self.state_file}: {e}")
+        """Loads state directly from the SQLite LangGraph checkpointer."""
+        if not self.graph_app:
+            return
+
+        try:
+            checkpoint_state = self.graph_app.get_state(self.config)
+            if checkpoint_state and checkpoint_state.values:
+                self.harnesses = checkpoint_state.values.get("harnesses", {})
+                self.active_harness = checkpoint_state.values.get("active_harness")
+            else:
+                # First time initialization
+                self.save_state()
+        except Exception as e:
+            logger.error(f"Failed to load state from SQLite Checkpointer: {e}")
 
     def save_state(self):
-        try:
-            with open(self.state_file, "w") as f:
-                json.dump({
-                    "harnesses": self.harnesses,
-                    "active_harness": self.active_harness
-                }, f, indent=4)
-            logger.debug(f"Saved state to {self.state_file}")
-        except Exception as e:
-            logger.error(f"Failed to save state to {self.state_file}: {e}")
+        """Saves state securely to the SQLite checkpointer by updating the graph state."""
+        if not self.graph_app:
+            return
+
+        current_values = {
+            "harnesses": self.harnesses,
+            "active_harness": self.active_harness
+        }
+        self.graph_app.update_state(self.config, current_values)
+        logger.debug(f"Saved state to SQLite checkpointer: {self.state_file}")
 
     @benchmark
     def start(self, name, worktree=False, background_cmd=None, agent_type="hermes"):
@@ -164,16 +193,21 @@ class MultiHarnessOrchestrator:
         for name in stale_harnesses:
             self.harnesses[name]['state'] = 'stale'
 
-        # Optional: Run the LangGraph synchronization pipeline
-        try:
-            from workflow_graph import run_orchestrator_graph
-            new_state = run_orchestrator_graph(self.get_state())
-            self.harnesses = new_state.get("harnesses", self.harnesses)
-        except ImportError as e:
-            logger.debug(f"LangGraph not integrated: {e}")
-
-        if stale_harnesses:
-            self.save_state()
+        # Run the full LangGraph sweep. Since we are using a checkpointer,
+        # calling `invoke` will securely mutate the SQLite state.
+        if self.graph_app:
+            try:
+                # Provide the current state as input to the graph
+                final_state = self.graph_app.invoke(
+                    {"harnesses": self.harnesses, "active_harness": self.active_harness},
+                    self.config
+                )
+                self.harnesses = final_state.get("harnesses", self.harnesses)
+            except Exception as e:
+                logger.error(f"LangGraph sync failed: {e}")
+        else:
+            if stale_harnesses:
+                self.save_state()
 
         return stale_harnesses
 

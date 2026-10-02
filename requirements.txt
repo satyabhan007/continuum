@@ -1,5 +1,5 @@
 psutil==5.9.8
 Flask==3.0.0
-langchain==0.1.13
-langgraph==0.0.30
-langchain-core==0.1.33
+langchain>=0.2.0
+langgraph>=0.1.0
+langgraph-checkpoint-sqlite>=1.0.0

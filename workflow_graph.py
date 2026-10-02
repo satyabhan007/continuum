@@ -62,26 +62,7 @@ workflow.set_entry_point("initialize")
 workflow.add_edge("initialize", "sync_tmux")
 workflow.add_edge("sync_tmux", END)
 
-# Compile the graph
-orchestrator_app = workflow.compile()
-
-def run_orchestrator_graph(current_state: dict) -> dict:
-    """
-    Utility function to run the LangGraph workflow given the current dictionary state.
-    Returns the final mutated state.
-    """
-    initial_state = OrchestratorState(
-        harnesses=current_state.get("harnesses", {}),
-        active_harness=current_state.get("active_harness"),
-        messages=[],
-        last_action=""
-    )
-
-    # Execute the graph
-    final_state = orchestrator_app.invoke(initial_state)
-
-    # Return the data in the format expected by our UI/json
-    return {
-        "harnesses": final_state.get("harnesses", {}),
-        "active_harness": final_state.get("active_harness")
-    }
+# We expose the uncompiled workflow so the orchestrator can attach its own checkpointer
+# and manage the thread configuration correctly for SQLite persistence.
+def get_workflow():
+    return workflow

@@ -3,3 +3,6 @@ orchestrator.log
 *.json
 harness_error.log
 dashboard.log
+*.db
+*.db-shm
+*.db-wal
