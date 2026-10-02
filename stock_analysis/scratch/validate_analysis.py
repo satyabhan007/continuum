@@ -256,6 +256,9 @@ def main():
         differing = {k: (settings.get(k), expected_settings[k])
                      for k in expected_settings
                      if settings.get(k) != expected_settings[k]}
+        extra = sorted(set(settings) - set(expected_settings))
+        if extra:
+            differing["unexpected_keys"] = (extra, "not allowed")
         print(f"FAILED: report.json settings differ from validator "
               f"constants: {differing}")
         sys.exit(1)
