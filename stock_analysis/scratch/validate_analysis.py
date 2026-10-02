@@ -195,6 +195,13 @@ def streaks(returns):
 
 
 def main():
+    # Never-crash rule: this validator is documented to run from
+    # stock_analysis/, but a stray cwd must not crash it with a raw
+    # traceback. Both scripts live in <analyzer_dir>/scratch/, so anchor
+    # all relative paths (AAPL.csv, out/report.json) to the analyzer dir.
+    analyzer_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    os.chdir(analyzer_dir)
+
     # Self-heal for fresh clones: out/ is gitignored (regenerable), so if
     # the report is missing, produce it with the committed analyzer from
     # the committed sample CSVs - deterministic data, same tool.
